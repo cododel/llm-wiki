@@ -25,15 +25,8 @@ jobs:
           bun-version-file: .bun-version
       - name: Install regex search dependency
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Dependency policy
-        run: bun test tools/mcp-runtime-policy.test.ts
-      - name: MCP integration, transports, and OAuth
-        run: bun run tools/mcp-wiki-server/test.ts
-      - name: Content contract
-        run: |
-          bun run tools/wiki_health.ts --json
-          bun run tools/wiki_tags.ts validate --strict --json
-          bun run tools/wiki_lint.ts --json
+      - name: Verify template
+        run: bun run tools/verify.ts
       - name: No changes or dependencies in the vault
         run: |
           git diff --exit-code

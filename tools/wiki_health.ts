@@ -12,7 +12,7 @@ const SKIP_DIRS = new Set([".git", ".obsidian", ".claude", ".hermes", "node_modu
 const SKIP_FILES = new Set([".factcheck-log.md"]);
 const FACTCHECK_READOUT_RE = /^readouts\/\d{4}-\d{2}-\d{2}-factcheck-[^/]+(?:-batch-\d+|-summary)\.md$/;
 const FM_EXEMPT = new Set(["AGENTS.md", "README.md", "SCHEMA.md", "index.md", "log.md", "raw/_README.md"]);
-const VALID_TYPES = new Set(["raw-source", "readout", "entity", "concept", "comparison", "query", "summary", "idea", "note", "draft", "article-draft", "post-draft", "meta", "adr"]);
+export const VALID_TYPES = new Set(["raw-source", "readout", "entity", "concept", "comparison", "query", "idea", "note", "article-draft", "post-draft", "meta", "adr"]);
 const TEMPLATE_TARGETS = new Set([
   "idea-name", "idea-name/README", "idea-name/product", "idea-name/tech", "concept-name", "concept-slug",
   "page-name", "page-1", "page-2", "ideas/project-slug", "./sub-page", "wikilinks", "path", "SCHEMA.md",
@@ -147,6 +147,11 @@ export function checkFrontmatter(rel: string, text: string, validTags: Set<strin
   if (!fm.type) issues.push(`${rel}: missing type in frontmatter`);
   else if (!VALID_TYPES.has(fm.type)) issues.push(`${rel}: unknown type '${fm.type}'`);
   if (!fm.title) issues.push(`${rel}: missing title in frontmatter`);
+  if (rel.startsWith("drafts/") && !rel.endsWith("/README.md")) {
+    if (rel.startsWith("drafts/articles/") && fm.type !== "article-draft") issues.push(`${rel}: drafts/articles pages require type 'article-draft'`);
+    else if (rel.startsWith("drafts/posts/") && fm.type !== "post-draft") issues.push(`${rel}: drafts/posts pages require type 'post-draft'`);
+    else if (!rel.startsWith("drafts/articles/") && !rel.startsWith("drafts/posts/")) issues.push(`${rel}: content pages cannot live directly under drafts/`);
+  }
   const tags = frontmatterFieldValues(text, "tags");
   if (tags.length === 0) issues.push(`${rel}: missing non-empty tags in frontmatter`);
   for (const tag of tags) if (!validTags.has(tag)) issues.push(`${rel}: tag '${tag}' not in SCHEMA taxonomy`);

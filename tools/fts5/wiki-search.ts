@@ -131,7 +131,7 @@ export function resolveType(relPath: string, fmType = ""): string {
   if (relPath.startsWith("notes/")) return "note";
   if (relPath.startsWith("drafts/posts/")) return "post-draft";
   if (relPath.startsWith("drafts/articles/")) return "article-draft";
-  if (relPath.startsWith("drafts/")) return "draft";
+  if (relPath.startsWith("drafts/")) return "unknown";
   if (relPath.startsWith("concepts/")) return "concept";
   if (relPath.startsWith("entities/")) return "entity";
   if (relPath.startsWith("comparisons/")) return "comparison";

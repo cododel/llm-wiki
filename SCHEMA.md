@@ -39,7 +39,24 @@ visibility: private
 ---
 ```
 
-Types: `raw-source`, `readout`, `entity`, `concept`, `comparison`, `query`, `summary`, `idea`, `note`, `draft`, `article-draft`, `post-draft`, `meta`, `adr`.
+Types: `raw-source`, `readout`, `entity`, `concept`, `comparison`, `query`, `idea`, `note`, `article-draft`, `post-draft`, `meta`, `adr`.
+
+| Type | Canonical layer |
+|---|---|
+| `raw-source` | `raw/` |
+| `readout` | `readouts/` |
+| `entity` | `entities/` |
+| `concept` | `concepts/` |
+| `comparison` | `comparisons/` |
+| `query` | `queries/` |
+| `idea` | `ideas/` |
+| `note` | `notes/` |
+| `article-draft` | `drafts/articles/` |
+| `post-draft` | `drafts/posts/` |
+| `meta` | `pages/` and structural README pages |
+| `adr` | `adr/` |
+
+Content pages must not be placed directly under `drafts/`; use `drafts/articles/` or `drafts/posts/` and the matching type. Copy the matching file from `templates/` when creating a page, then replace every placeholder.
 
 `sources` contains only raw-source paths or external URLs. Processed wiki pages belong in body wikilinks, not in `sources`. `raw_sources` records raw/non-wiki provenance; use portable repository-relative references/descriptions, never `/root/...`, `~/...`, drive-letter paths, or other machine-local references. Absolute filesystem destinations are also invalid in processed Markdown links; use plain code/prose for a local checkout reference or preserve its evidence under `raw/`.
 
@@ -90,7 +107,7 @@ These describe form and origin, not semantic topics; do not duplicate them as ta
 
 `source_url` is required for `web`; optional for `telegram`, `file`, and `import` when a durable URI exists; normally absent for `manual`. Use `source_filename`, `source_note`, and `import_batch` when appropriate. Do not add an ambiguous free-form `source` field.
 
-`processed_to` is mandatory: an explicit list of extensionless, vault-relative processed targets outside `raw/`, without `[[brackets]]`. Use exact README note paths for directory entry pages. Empty means preserved but not processed.
+`processed_to` is mandatory: an explicit list of extensionless, vault-relative processed targets outside `raw/`, without wikilink delimiters. Use exact README note paths for directory entry pages. Empty means preserved but not processed.
 
 `sha256` covers the exact UTF-8 body after the closing frontmatter delimiter, including its trailing newline if present. It does not cover mutable metadata. Preserve original body bytes. Re-ingest can detect unchanged payloads and drift; do not silently rewrite raw bodies or replace mismatching hashes. Corrections are new source revisions with an explicit log entry.
 

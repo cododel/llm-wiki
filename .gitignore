@@ -1,0 +1,30 @@
+# Derived search and optional factcheck state
+.wiki-fts5.db*
+.factcheck-log.md
+.factcheck-last-run
+.factcheck-state.json
+.factcheck.lock
+.wiki-lint.lock
+# Per-user editor/agent state
+.obsidian/
+.hermes/
+.claude/
+.vscode/
+.idea/
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo
+**/__pycache__/
+# Local configuration/secrets (examples remain tracked)
+.env
+.env.*
+!.env.example
+*.local.json
+*.local.cjs
+.mcp.json
+*.pem
+*.key
+*.sqlite
+*.sqlite-*
+# node_modules is intentionally NOT ignored: it must never exist in a vault.

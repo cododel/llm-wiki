@@ -1,5 +1,7 @@
 # LLM Wiki
 
+The accepted target is a standalone knowledge service with external OAuth, authorized MCP writes, and network factchecking. See [service contracts and architecture decisions](docs/README.md). The setup below describes the existing Markdown/readonly implementation; the target service is not implemented yet.
+
 A portable Markdown knowledge-base template for human-agent collaboration. It combines a source-preserving content contract, deterministic quality checks, local full-text search, a readonly MCP server, and an optional Hermes factcheck workflow.
 
 The repository starts as an empty wiki. Personal knowledge, source-vault history, credentials, runtime databases, and deployment state are intentionally absent.

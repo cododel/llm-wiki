@@ -1,0 +1,9 @@
+{
+  "name": "llm-wiki-service",
+  "private": true,
+  "type": "module",
+  "engines": { "bun": "1.3.14" },
+  "scripts": { "verify": "bun run tools/verify.ts", "api": "bun run src/runtime/api.ts", "worker": "bun run src/runtime/worker.ts" },
+  "dependencies": { "@modelcontextprotocol/sdk": "1.29.0", "jose": "6.2.3", "zod": "3.25.76", "zod-to-json-schema": "3.25.2" },
+  "devDependencies": { "bun-types": "1.3.14", "typescript": "5.8.3" }
+}

@@ -1,37 +1,60 @@
-# Identity and access contract
+# Identity, access and publication contract
 
-Status: accepted target; not a statement of current runtime capability.
+Status: normative service v2 contract.
 
-## Authentication boundary
+## Authentication
 
-An external OAuth service owns login, authorization consent, token issuance, and authentication state. The wiki does not retain its embedded authorization-server implementation as a supported remote mode.
+External Authelia 4.39.24 owns authentication, consent, opaque token issuance and revocation.
+The version decision and compatibility evidence are recorded in
+[ADR](adr/adr-20260910-resource-bound-authelia.md) and
+[auth report](auth-compatibility-20260908.md). Embedded OAuth is not supported.
 
-The wiki receives a verified identity and permission context for each operation and enforces domain authorization itself. A proxy granting entrance to the endpoint is not sufficient authorization for every tool. Neither shared network location nor unverified identity headers may grant privileges.
-
-Keep owner identity, client/executor identity, permissions, and assignment ownership distinguishable. Credentials and auth state do not belong in knowledge content, webhook task context, or logs.
+Every authorized HTTP request requires live introspection using the separate wiki technical
+client. There is no positive cross-request cache. Inactive, expired, foreign-audience,
+foreign-issuer or incomplete identities fail closed; provider unavailability denies protected
+access. Wiki then checks scopes and an explicit local subject/client grant. Requested scopes,
+client names, forwarded headers, network location and usernames cannot create a role.
+Credentials, mappings and auth state are external to knowledge and task context.
 
 ## Roles
 
-| Identity | Reads | Writes |
+| Identity | Read | Write |
 |---|---|---|
-| Personal agent | All knowledge, including private context and evidence | Content management under the knowledge contract; factcheck execution and management |
-| Optional separate factchecker | All knowledge needed for research, including private sources | Its authorized factcheck assignments, progress, failure reports, and submitted results only |
-| Anonymous public reader, when enabled | Explicitly published knowledge only | None |
+| Personal agent | All knowledge and evidence | Content, taxonomy, publication requests, assignments and event handling |
+| Optional factchecker | All knowledge and evidence | Claim, progress, results and failure for its own assignments |
+| Browser owner | Approval context and selected evidence | Confirm exact publication requests through browser session |
+| Anonymous, when publication enabled | Published revisions and selected attachments | None |
 
-The personal agent may execute factchecks without a separate factchecker deployment. Separate identities must remain distinguishable even when acting for the same owner. The factchecker cannot edit checked pages, expand its permissions, or claim another executor's active assignment.
+The personal agent can execute work without a separate factchecker. Claims bind to the verified
+actor and a fresh lease token. Full knowledge access never includes shell, arbitrary filesystem
+access, authentication configuration or the right to approve publication via MCP.
 
-Full content access does not grant shell execution, secret access, arbitrary filesystem operations, or silent rewriting of immutable source payloads. Authentication and permission checks apply to every operation, not only tool discovery.
+## Revision publication
 
-## Publication
+Publication is disabled by default. The personal agent requests a specific current revision and
+explicit subset of its attachments. Neither type, directory, status, links nor a metadata marker
+publishes knowledge. The browser owner sees exact requested content, the prior public version,
+check results and discrepancies before deciding. Factcheck informs but does not veto approval.
 
-The anonymous public endpoint is optional and disabled by default. Publication is an explicit authorized content operation; type, folder, lifecycle `published`, and linkage from a public page do not publish another entity.
+A separate OIDC client establishes a browser session with PKCE, state, nonce and verified ID
+token. Approval checks the live owner identity, session, same-origin CSRF token, request expiry,
+pending state and unchanged current revision. Agent bearer tokens cannot approve. An edit after
+request formation makes that request stale. Render untrusted Markdown as escaped source text,
+not active HTML. No approval MCP tool exists.
 
-Public reads must gate bodies, metadata, references, search excerpts, and candidate lists. Private reference targets and attachments do not inherit public access. Operational state and credentials are never public knowledge. The exact `visibility: public` rule remains the Markdown representation of explicit publication.
+Editing a published record leaves its previously approved revision public. Unpublish/archive
+hide it while preserving history. Sources and related records require separate approval.
+Attachments are independently selected; knowing a private hash does not grant download access.
 
-## Acceptance anchors
+## Non-leakage
 
-Demonstrate personal-agent versus factchecker allow/deny behavior, immutable-source protection, assignment ownership, denied forged identities, no proxy bypass, public non-leakage, and fail-closed behavior when remote authentication is unavailable or incomplete.
+Access selection precedes search, rank, counts, resolution, graph links and diagnostics.
+Public responses cannot expose private new revisions through metadata, history, source references,
+attachments or errors. Auth failures are sanitized. Explicitly approved body text itself may
+contain sensitive prose or links; owner review remains necessary.
 
-Decision provenance: [external OAuth and identities](adr/adr-20260908-external-oauth-identities.md).
-Related: [knowledge](KNOWLEDGE_CONTRACT.md), [factchecking](FACTCHECK_CONTRACT.md), [deployment](DEPLOYMENT_CONTRACT.md).
+Verification anchors: role/client/subject matrix, audience/revocation/provider failure,
+old-public/new-private matrix, stale approvals, CSRF, escaped content and private attachments.
 
+Decisions: [identities](adr/adr-20260908-external-oauth-identities.md),
+[owner revision publication](adr/adr-20260910-owner-revision-publication.md).

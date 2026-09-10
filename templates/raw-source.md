@@ -1,13 +1,6 @@
----
-title: {Source title}
-created: {YYYY-MM-DD}
-updated: {YYYY-MM-DD}
-type: raw-source
-source_kind: {user-note|chat|transcript|doc|article|asset-note|log}
-source_channel: {telegram|web|file|manual|import}
-ingested: {YYYY-MM-DD}
-sha256: {body-only-sha256}
-tags: [source, {semantic-tag}]
-processed_to: []
----
-{Original source body. Preserve it byte-for-byte after ingestion.}
+# Raw source intake
+
+Submit the complete original bytes through the source operation; do not copy this scaffold into the original payload.
+
+Record source_kind, source_channel and capture_boundary separately. Include source_url for web material.
+Use the server-verified checksum and returned revision ID for processed provenance.

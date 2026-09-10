@@ -1,22 +1,42 @@
 # Deployment and initialization contract
 
-Status: accepted target; not a statement of current runtime capability.
+Status: normative service v2 contract.
 
-The distribution includes a complete Docker Compose service arrangement with external OAuth and persistent instance storage. The wiki backend is not directly published as an unauthenticated alternative to the authorized endpoint. An optional public surface follows the access contract.
+The distribution contains Caddy, Authelia, PostgreSQL, API and worker. One pinned Bun image
+runs either application mode. Only Caddy publishes host ports. PostgreSQL contains separate
+wiki/Authelia databases and credentials; API/worker cannot read the Authelia database.
 
-## Instance lifecycle
+## Separation and lifecycle
 
-- Code and packaged templates are separate from mutable instance data.
-- Initialize an empty instance volume from the neutral template once. Initialization must distinguish an interrupted first setup from an existing instance and must not overwrite user data.
-- Restarting or replacing service containers preserves knowledge and operational state needed for recovery. Updating an image does not reapply the initial template over existing content.
-- Repository service ADRs/contracts, synthetic demos, source-vault history, credentials, and runtime state are not initial instance knowledge.
-- Keep auth secrets/state outside knowledge content. Search caches remain disposable; source data, assignments, accepted results, and undelivered events require persistence.
-- The initial content vocabulary reuses the existing template. A broad redesign of data organization is outside this decision. Database engine and physical schema are not selected by this contract.
+Code, dependencies and editorial templates belong to the immutable image. Knowledge revisions,
+jobs, results, outbox and audit belong to PostgreSQL. Binary originals belong to a separate
+persistent volume. Credentials and local grants live in an operator-owned external directory,
+not in knowledge, source control, logs or task envelopes.
 
-## Acceptance anchors
+Configuration generation refuses an existing target directory. Database initialization and
+versioned migrations are transactional and locked; neutral taxonomy is seeded once. No personal
+corpus, demonstration content, source Git history or service development documents are imported.
+Interrupted database initialization rolls back and is retryable. A failed configuration
+generation may leave an incomplete protected directory; the operator inspects it before choosing
+a fresh directory. No automatic overwrite of partial operator configuration occurs.
 
-Demonstrate first initialization, interrupted initialization recovery, repeat startup without data replacement, container recreation with retained work/results, private backend isolation, and absence of secrets/development documentation in instance knowledge.
+Image replacement/restart preserves content and work state. Migration checksums reject changed
+historical migrations. Dependencies are exact-pinned with a frozen lockfile in the image;
+no code or node_modules belongs in data volumes. Search vectors are transactional PostgreSQL
+derived data, not a second file vault or SQLite index.
 
-Decision provenance: [Compose storage](adr/adr-20260908-compose-instance-storage.md).
-Related: [access](ACCESS_CONTRACT.md), [knowledge](KNOWLEDGE_CONTRACT.md), [factchecking](FACTCHECK_CONTRACT.md).
+## Recovery and acceptance
 
+Backup includes both databases, original blob volume and protected configuration/keys.
+Stop writers for a coordinated backup. Restore into a separate disposable instance and verify
+before replacing live storage. Do not run down --volumes on operator instances.
+[Operations](OPERATIONS.md) owns the concrete procedure, rotation and upgrade guidance.
+
+Unified verification must use only generated disposable configuration, temporary dependency
+installation, isolated database names/Compose project and loopback endpoints. Cleanup removes
+only resources it created, even on failure. Operator data/credentials must not be consulted.
+Real OAuth reconnect and ChatGPT scheduling are separate operator acceptance, not inferred from
+local protocol tests.
+
+Decision: [Compose storage](adr/adr-20260908-compose-instance-storage.md),
+[PostgreSQL](adr/adr-20260910-postgresql-revision-store.md).

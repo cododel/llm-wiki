@@ -1,13 +1,4 @@
-# Derived search and optional factcheck state
-.wiki-fts5.db*
-.factcheck-log.md
-.factcheck-last-run
-.factcheck-state.json
-.factcheck.lock
-.wiki-lint.lock
 # Per-user editor/agent state
-.obsidian/
-.hermes/
 .claude/
 .vscode/
 .idea/
@@ -27,4 +18,4 @@
 *.key
 *.sqlite
 *.sqlite-*
-# node_modules is intentionally NOT ignored: it must never exist in a vault.
+# node_modules is intentionally NOT ignored: local verification installs in OS temp.

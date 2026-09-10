@@ -1,42 +1,71 @@
 # Knowledge service contract
 
-Status: accepted target; not a statement of current runtime capability.
+Status: normative service v2 contract. Verification evidence is separate from this specification.
 
-## Ownership
+## Ownership and representation
 
-The service owns durable knowledge, provenance, revisions, structural validation, and a queryable catalog. Agents own interpretation, synthesis, semantic classification, and editorial judgment. Readers and adapters consume the service contract.
+The service owns records, immutable revisions, source preservation, structural validation,
+taxonomy, catalog, search and audit. Agents own interpretation, synthesis and editorial judgment.
+PostgreSQL is the working store; Markdown is body text, not a filesystem schema.
+The twelve types and required discovery tags are defined in [SCHEMA](../SCHEMA.md).
 
-Obsidian is not a supported product dependency. Direct editing of a filesystem vault is not the primary service interface. A catalog/index must be retrievable deterministically through a tool without requiring an agent to reconstruct it. Storage layout and export representation are implementation choices.
+Stable record UUIDs are independent of mutable titles and slugs. Slug/title resolution returns
+ambiguity instead of selecting arbitrarily. Relations use record IDs; provenance uses immutable
+raw revision IDs or explicit HTTP(S) URLs. Reverse `processed_to` is computed from accepted
+provenance. Markdown links are editorial content, not an implicit second relationship store.
 
-The twelve existing content types and their distinctions remain the initial semantic vocabulary from [SCHEMA](../SCHEMA.md): raw-source, readout, entity, concept, comparison, query, idea, note, article-draft, post-draft, meta, and adr. Folder layout is not a future persistence requirement.
+## Revisions and atomic changes
 
-## Sources and relationships
+A revision contains body, metadata, tags, relations, provenance and attachment references.
+Accepted revisions and their edge sets are sealed against subsequent mutation. Current and
+published pointers are distinct. Search vectors, catalog and audit become visible with the
+accepted transaction; there is no asynchronous indexing promise or manually maintained index/log.
 
-- Preserve the exact accepted source payload before recording its interpretation. Compute source hashes on the server; mutable metadata is outside the immutable payload.
-- Ordinary updates must not overwrite source bodies. An authorized correction creates a distinct source revision and preserves the prior evidence. Recomputing a hash after silent modification is not preservation.
-- Preserve the explicitly selected source boundary: a user note, complete exchange, excerpt, or attachment must not silently become a different capture. The server verifies submitted bytes and declared boundaries; it cannot prove that a client supplied the complete original.
-- Attachment intake validates size, actual format, and checksum and records its provenance. Transcription and interpretation remain distinguishable from original bytes.
-- Provenance references target preserved sources or external evidence; relationships between processed knowledge are separate edges. The service maintains reverse processing relationships, represented today as `processed_to`.
-- Tags come from the active taxonomy. Expanding the taxonomy is an explicit change, not an automatic side effect of assigning an unknown tag.
-- References resolve consistently across reads, writes, catalog, and diagnostics. Missing and ambiguous references must not silently select a target. Retained Markdown imports use explicit README targets and preserve non-Markdown extensions.
+A logical change group contains at most 50 typed operations. Validate all types, tags, target
+references and expected revisions before committing the transaction. Any invalid operation rolls
+back the whole group. New record relations can target IDs created in the same group.
+A request key is scoped to its authenticated actor: identical repetition replays the result;
+a different payload with the same key conflicts. Concurrent edits with the same expected revision
+have exactly one winner. No last-write-wins fallback is permitted.
 
-## Changes
+Archival hides public access and removes the record from current catalogs without deleting history
+or existing evidence. A correction creates a new revision, never modifies earlier evidence.
+Generated reports use the same content validation and immutable storage.
 
-- Authorized content operations support creation, editing, raw intake, archival, and explicit publication, subject to the [access contract](ACCESS_CONTRACT.md).
-- A logical multi-entity change validates the exact candidate and expected revisions before application. Concurrent changes must cause an explicit conflict rather than silent lost updates.
-- A completed operation includes its required provenance, navigation changes, and audit event. Partial writes must not be reported as complete; interrupted operations must be recoverable.
-- Maintain derived catalog/search data from accepted content. A response distinguishes durable content acceptance from any outstanding index refresh; do not claim searchability before it is established.
-- Archival preserves evidence and accounts for affected references. Zero incoming links is a diagnostic, not authority to delete. Bulk-import staging is separate from archival; retained evidence cannot be discarded merely to clear warnings.
-- Structural checks distinguish content, raw sources, generated evidence, attachments, and operational state. Generated readouts remain subject to content/provenance/reference validation even when exempt from curated-index and minimum-link guidance.
-- Historical evidence and unrelated changes must not be mechanically rewritten as part of a scoped operation.
+## Originals and attachments
 
-## Semantic boundary
+A raw-source operation preserves submitted original bytes separately from editable metadata and
+display text. The server computes SHA-256 and checks the supplied checksum. Text intake is bounded
+to 1 MB, with canonical base64 transport; source_kind, source_channel and capture_boundary are
+required, with source_url for web sources. New source originals require an explicit source
+operation with expected revision. The server cannot prove a client supplied the entire original.
 
-The service can validate types, references, versions, payload integrity, and operation scope. It does not prove truth, citation relevance, complete claim extraction, author's intent, or semantic equivalence of a replacement link. Link quotas must not force fabricated relationships. OAuth permission is not proof that a human approved a particular text; client-supplied approval assertions alone do not establish that fact.
+Binary originals are content-addressed in a separate volume. Intake is bounded to 20 MiB,
+checks checksum and allowed PNG/JPEG/PDF signatures, and never fetches arbitrary content URLs.
+Signature validation is not malware scanning or proof that a document is benign.
+Files are staged, synced and finalized before a database reference can be accepted. Duplicate
+intake is safe. Referenced blobs cannot be removed by staging cleanup; incomplete staging older
+than 24 hours is cleaned. Unaccepted final files older than 24 hours are reconciled under the
+same per-hash lock as finalization; accepted blobs are never removed by this cleanup.
+Downloads are authorized independently of possession of a hash.
 
-## Acceptance anchors
+## Taxonomy and semantic limits
 
-Verify source byte preservation and revision history; attachment integrity; forward/reverse provenance agreement; ambiguous-reference rejection; concurrent-update conflicts; recoverable multi-entity changes; deterministic catalog retrieval; and diagnostics that distinguish scoped regressions from pre-existing debt.
+Tags must exist in the managed taxonomy and satisfy type discovery requirements. Extending it
+requires an explicit authorized tag operation; assigning an unknown tag never creates it.
+Counts/show/suggest/validate are deterministic queries; suggest returns context, not model advice.
+Public taxonomy output includes only tags present on public revisions, never mutable descriptions.
 
-Decision provenance: [standalone service](adr/adr-20260908-standalone-knowledge-service.md), [deterministic contracts](adr/adr-20260908-deterministic-service-contracts.md).
+Structural validity does not prove truth, complete claim extraction, citation relevance, author
+intent or semantic equivalence. Link quotas must not fabricate relationships. Draft originals
+and edited versions remain distinguishable. Facts, hypotheses, dated evidence and durable
+synthesis retain their different meanings.
 
+## Verification anchors
+
+Source byte equality and revision history; sealed edges; checksum and symlink denial; atomic
+rollback; idempotency conflicts; concurrent edit races; ambiguous resolution; RU/EN lexical
+search and bounded ripgrep syntax; reverse provenance; no index/log maintenance.
+
+Decisions: [revision storage](adr/adr-20260910-postgresql-revision-store.md),
+[deterministic boundaries](adr/adr-20260908-deterministic-service-contracts.md).

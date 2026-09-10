@@ -1,50 +1,76 @@
-# Factcheck protocol contract
+# Agent work and evidence contract
 
-Status: accepted target; not a statement of current runtime capability.
+Status: normative service v2 contract. Agents are external executors, not subprocesses of wiki.
 
-## Activation and entrypoints
+## Two independently enabled processes
 
-Factchecking requires an explicit instance-level opt-in. An authorized agent can poll through MCP to detect and obtain necessary work. With an execution webhook configured, a background detector can dispatch work automatically. Both paths share one logical queue and must not duplicate the same pending work.
+Incremental factcheck is disabled by default. First activation fills a bounded queue with eligible
+unverified current content, then detects content/evidence fingerprint changes. A detection pass
+adds at most 100 jobs and keeps at most 100 pending/running incremental jobs. Further passes
+drain the initial corpus progressively. Raw, meta, ADR and generated reports are excluded as
+targets; notes, ideas, drafts and ordinary readouts are included. Raw remains evidence.
 
-A separate executor is optional. The personal agent can use the same assignment protocol. Scheduling belongs to the invoking scheduler or configured background service; no client-specific schedule capability is assumed.
+Fingerprint includes type, title, body, explicit source revisions/URLs and attachments, not
+timestamps, status, publication, tags, slug or workflow state. Evidence refers to exact revisions:
+updating a source does not silently retarget a processed record's provenance.
 
-## Detection and context
+Review is independently disabled. An explicit campaign fixes selected current revisions;
+an independently configured interval can create a corpus campaign. A campaign does not replace
+incremental checkpoints. Review may propose staleness, duplicates or useful relationships,
+but never applies content corrections. Historical snapshots are evidence, not a promise to
+verify truth at a historical date.
 
-- Detect changes using content hashes against successfully checked versions, independently of Git commits.
-- Pin each assignment to its source snapshots and a versioned workflow. Changes during execution remain eligible for a later check.
-- Include bounded context, source references, expected result requirements, and assignment identity. Workflows travel with tasks; model/provider/profile configuration belongs to the external executor.
-- Exclude runtime, packaging, preserved raw as verification targets, and self-generated factcheck evidence from recursive work generation. Raw remains available as research evidence. Fine-grained target eligibility is not yet selected.
-- No eligible changes means no research dispatch. A first baseline and explicit recheck use the same bounded execution lifecycle; precise activation controls remain to be specified.
+## Shared assignment lifecycle
 
-## Execution and feedback
+MCP polling and optional execution webhooks use the same durable PostgreSQL queue.
+Assignments contain protocol/workflow versions, ID, pinned snapshot, bounded context, source
+references and the actual structured result schema. The current batch size is one record.
+Instructions contain no local profile, shell, Git, cron or provider-specific Batch API assumptions.
 
-Webhook acceptance acknowledges delivery, not successful research. Feedback uses authorized MCP operations for obtaining/reserving work, reporting progress, completing work, and reporting failure; the exact tool names remain unselected.
+A delivered HTTP response is not completion. Both recipients must claim atomically before
+research. Claims bind to executor identity, token and lease. Each process has independent
+concurrency; progress persists and renews the lease. Expired claims cannot complete or overwrite
+a replacement result. Recovery preserves progress, delays retry by one minute, dispatches a new
+delivery only once work is claimable, and stops after configured maximum attempts.
+Pending work without an executor produces a durable event after one day.
 
-A reservation belongs to a verified executor for a bounded lease. Progress can renew the lease. Expired work is recoverable under a bounded retry policy. A stale executor must not overwrite a newer assignment outcome.
+An edit during research remains separate future work. Successful duplicate completion with the
+same owned claim and payload replays; a different payload conflicts. Invalid or incomplete
+results leave no successful checkpoint. Skipped/blocked results retain a reason and become
+terminal for that fingerprint, preventing an immediate infinite loop. Explicit review can
+revisit unchanged content.
 
-Repeated delivery and completion are idempotent. Conflicting repeated results are rejected. A task identifier is not a credential.
+## Results and reports
 
-## Results and completion
+Cover exactly every assigned snapshot. Claims provide exact UTF-16 character offsets and quote,
+verdict, reasoning, HTTP(S) evidence and observation dates. Confirmed/contradicted claims require
+evidence. Checked coverage requires claims; no_claims/skipped/blocked require reasons.
+The service validates structure and snapshot binding, not truth or evidence quality.
 
-- Account for every assigned page: checked, no verifiable claims, skipped with a reason, or blocked. No page may silently disappear from the result.
-- Submit individual claims with their location in the checked snapshot, verdict, reasoning, cited evidence, and observation date. Verdicts distinguish confirmed, contradicted, unverified, and opinion.
-- The service validates the structured result, builds readout metadata and references, calculates totals, and records completion. Semantic interpretation remains the agent's responsibility.
-- Preserve the distinction between lack of evidence and contradiction. Evidence links and structural validity do not prove the truth or completeness of a result. Severity thresholds and source-authority classification have not been selected.
-- A successful check may identify contradictions. It saves evidence and creates an operator-review event; it does not automatically edit the checked knowledge.
-- Technical failure or an invalid/incomplete result does not advance successful verification state. Verification state advances only for the accepted snapshot after the required results and aggregate report are durably saved.
-- Aggregate counts derive from accepted results. A narrative synthesis must not redo research merely to summarize completed batches.
-- Writing readouts does not implicitly enable Git commits or pushes. The existing optional Git behavior is not a requirement of this network protocol.
+The service preserves the full structured result and creates a bounded immutable generated readout,
+source links, audit and, for successful
+incremental work, checkpoint atomically with accepted results. Contradiction is a completed check;
+technical failure, blocked or partial work is not. Generated reports never recursively enqueue.
+Readouts contain bounded claim previews; `wiki_assignment_result` returns the full accepted
+evidence without losing long reasoning. Campaign summaries derive progress, verdict totals and proposal counts from stored results
+without new research. No automatic corrections or Git operations occur.
 
-## Escalation
+## Delivery and escalation
 
-Persist discrepancies, clarification requests, execution failures, and delivery/lease failures as observable events. Expose them through MCP to the personal agent and optionally deliver them to a separately configured notification webhook.
+Operator-configured HTTPS destinations are separate for factcheck, review and notifications.
+Outbox events carry an event UUID and timestamped HMAC signature over the exact request body.
+Receivers verify freshness/signature, deduplicate event IDs and still claim via authenticated MCP.
+Secrets never enter task context. Redirects are not followed; network time and retry count are
+bounded. Delivery failure cannot erase accepted evidence.
 
-The service detects missing executors independently of executor self-reporting. Notification failure must not erase the event or undo accepted research. An acknowledged delivery must not be confused with operator resolution. Exact acknowledgement and notification retry interfaces remain to be specified.
+Discrepancies, clarifications, execution, delivery and lease failures remain queryable through
+MCP regardless of notification delivery. Delivery, acknowledgement and resolution are independent.
+Personal-agent event handling is audited. Optional notifications cannot recursively generate an
+unbounded notification-failure loop.
 
-## Acceptance anchors
+Verification anchors: first pass/exclusions, polling/webhook claim race, retry timing, stale
+completion, partial results, edited targets, nonrecursive reports, separate review, retained
+progress, signed duplicate delivery, durable events and snapshot-derived totals.
 
-Verify polling-only and webhook modes against the same queue; no-op behavior; duplicate dispatch; concurrent claims; lease expiry and stale completion; invalid results; changes during research; accepted contradictions versus failed execution; durable notifications through restart; and no automatic edits of checked pages.
-
-Decision provenance: [network execution](adr/adr-20260908-network-factchecking.md), [content detection](adr/adr-20260908-content-hash-detection.md), [deterministic contracts](adr/adr-20260908-deterministic-service-contracts.md).
-Related: [access](ACCESS_CONTRACT.md), [knowledge](KNOWLEDGE_CONTRACT.md).
-
+Decisions: [network workflow](adr/adr-20260908-network-factchecking.md),
+[content detection](adr/adr-20260908-content-hash-detection.md).

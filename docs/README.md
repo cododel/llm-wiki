@@ -4,9 +4,7 @@ These documents describe the accepted target for the standalone knowledge servic
 
 ## Authority and implementation boundary
 
-The operator accepted these decisions on 2026-09-08. They govern future implementation; they do not claim that the current checkout implements the target.
-
-The current implementation remains a Markdown template with readonly MCP, embedded single-owner OAuth, and an optional Hermes subprocess runner. Root `SCHEMA.md` describes that existing content representation. The service contracts below supersede its file/editor and readonly assumptions for the target service; source-preservation, knowledge-layer, taxonomy, and explicit-public semantics continue as specified below. Existing runtime instructions apply when operating the current code.
+The operator accepted the service direction on 2026-09-08 and the implementation boundaries in the subsequent plan. Living contracts govern the service implementation; they are not evidence that every deployment or client integration has passed acceptance. Root `SCHEMA.md` defines semantic types, not a filesystem layout. Historical ADR reasoning remains unchanged; successor decisions record PostgreSQL, owner-approved revisions and the tested external auth version.
 
 - [Architecture decisions](adr/README.md) preserve accepted choices and alternatives.
 - [Knowledge contract](KNOWLEDGE_CONTRACT.md) owns content, provenance, changes, and catalog semantics.
@@ -14,11 +12,17 @@ The current implementation remains a Markdown template with readonly MCP, embedd
 - [Factcheck contract](FACTCHECK_CONTRACT.md) owns work detection, execution, results, and escalation.
 - [Deployment contract](DEPLOYMENT_CONTRACT.md) owns initialization and persistence boundaries.
 
-## Unresolved implementation choices
+## Selected implementation boundary
 
-No database engine, relational schema, OAuth product/version, authentication grant for unattended agents, exact MCP tool names, wire schemas, retry timings, or notification payload has been selected. Abandoning Obsidian does not by itself select SQLite or PostgreSQL.
+The approved implementation uses Bun, PostgreSQL through Bun.SQL, external Authelia,
+stable-ID MCP v2, owner-confirmed revision publication, and separate incremental
+factchecking and review processes. The original eleven read names remain; file-path
+arguments are replaced, not silently emulated. API and worker share a PostgreSQL
+queue and outbox without another broker.
 
-A relational primary store was discussed as a simplification; choosing and specifying it remains implementation-design work. Automatic bidirectional filesystem synchronization is not part of the accepted service direction.
+Modules live in `src/content`, `src/factcheck`, `src/auth`, `src/storage`, `src/search`,
+`src/mcp`, `src/delivery`, and `src/runtime`. Automatic bidirectional filesystem
+synchronization is not part of the accepted service direction.
 
 ChatGPT scheduled execution of external MCP tools has not been verified. The service must support authorized MCP polling regardless of the scheduler; documentation must not promise client capabilities without verification.
 
@@ -28,3 +32,4 @@ The old Hermes instructions are research input, not normative authority. Conflic
 
 Implementation acceptance must demonstrate the observable guarantees in each contract, including concurrent changes, authorization denial, interrupted operations, duplicate delivery, and restart recovery. Documentation acceptance proves only coherent records and working references; it is not runtime acceptance.
 
+See [local acceptance evidence](VERIFICATION.md) for the verified scenarios and explicit limits.

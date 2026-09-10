@@ -1,0 +1,73 @@
+name: llm-wiki
+x-wiki: &wiki
+  build: .
+  image: llm-wiki-service:local
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  volumes: [wiki_blobs:/var/lib/wiki/blobs]
+  env_file: ${INSTANCE_DIR:?Set INSTANCE_DIR}/wiki.env
+  secrets: [database_url, auth_grants, introspection_secret, browser_secret, session_key]
+  depends_on:
+    postgres: {condition: service_healthy}
+    authelia: {condition: service_started}
+services:
+  caddy:
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    restart: unless-stopped
+    ports: ['80:80', '443:443', '443:443/udp']
+    environment:
+      WIKI_HOST: ${WIKI_HOST:?Set WIKI_HOST}
+      AUTH_HOST: ${AUTH_HOST:?Set AUTH_HOST}
+      TLS_EMAIL: ${TLS_EMAIL:?Set TLS_EMAIL}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api, authelia]
+  postgres:
+    image: postgres:17.11-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password, wiki_db_password, auth_db_password]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/init-databases.sh:/docker-entrypoint-initdb.d/10-wiki.sh:ro
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  authelia:
+    image: authelia/authelia:4.39.24@sha256:8f428b06bb07bb978c10477527634f19ef3b049c9c87321fda14e24d8fc4c535
+    restart: unless-stopped
+    volumes:
+      - ${INSTANCE_DIR:?Set INSTANCE_DIR}/authelia:/config:ro
+      - auth_notifications:/notifications
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *wiki
+    command: [bun, run, src/runtime/api.ts]
+  worker:
+    <<: *wiki
+    command: [bun, run, src/runtime/worker.ts]
+volumes:
+  postgres_data:
+  wiki_blobs:
+  auth_notifications:
+  caddy_data:
+  caddy_config:
+secrets:
+  postgres_password: {file: '${INSTANCE_DIR}/secrets/postgres-password'}
+  wiki_db_password: {file: '${INSTANCE_DIR}/secrets/wiki-db-password'}
+  auth_db_password: {file: '${INSTANCE_DIR}/secrets/auth-db-password'}
+  database_url: {file: '${INSTANCE_DIR}/secrets/database-url'}
+  auth_grants: {file: '${INSTANCE_DIR}/secrets/auth-grants.json'}
+  introspection_secret: {file: '${INSTANCE_DIR}/secrets/introspection-secret'}
+  browser_secret: {file: '${INSTANCE_DIR}/secrets/browser-secret'}
+  session_key: {file: '${INSTANCE_DIR}/secrets/session-key'}

@@ -1,9 +1,89 @@
-# LLM Wiki service
+# LLM Wiki
 
-A single-owner knowledge service for humans and agents. PostgreSQL stores stable
-records, immutable revisions, original-source provenance, jobs and audit. Markdown
-is the text format, not the database. Agents work through MCP v2; the owner confirms
-publication of individual revisions in a small browser page.
+A self-hosted knowledge base for humans and AI agents, with preserved sources,
+revision history, controlled publication and agent-driven factchecking.
+
+LLM Wiki gives your notes, research, ideas and decisions a durable home outside
+individual conversations. Connect a compatible MCP agent to capture material,
+retrieve context and develop related knowledge while retaining the evidence behind
+it. Original input, dated research findings and interpreted knowledge remain
+distinct, so you can revisit how a conclusion was reached.
+
+You operate the service and its storage. Agents handle research and writing; the
+service handles records, references, validation, history and access. Publication
+requires the owner's confirmation, and research workflows report findings without
+silently correcting the knowledge base.
+
+## What you can use it for
+
+- **Personal and project knowledge:** collect notes, ideas, reference material and
+  decisions that remain available across agent sessions.
+- **Evidence-backed research:** preserve originals, record dated findings, compare
+  alternatives and develop durable concepts with traceable sources.
+- **Writing and editorial work:** maintain article and post drafts alongside their
+  original input, supporting evidence and unresolved questions.
+- **Knowledge maintenance:** assign incremental factchecks or broader reviews,
+  inspect discrepancies and decide which changes to make.
+
+## Features
+
+- **Structured knowledge, flexible text.** Twelve record types cover raw sources,
+  research readouts, entities, concepts, comparisons, researched answers, ideas,
+  notes, article drafts, post drafts, metadata pages and architecture decisions.
+  Markdown bodies are paired with structured tags, relationships and provenance.
+- **Source preservation.** Keep exact original text bytes and PNG, JPEG or PDF
+  attachments with server-verified checksums. Source corrections create new
+  revisions; processed records reference the evidence they used.
+- **Revision history and reliable edits.** Stable IDs survive title changes.
+  Atomic change groups, expected-revision checks and idempotent retries prevent
+  partial updates and silent overwrites. Archival retains history.
+- **Search and navigation.** Russian/English full-text search, exact regex search,
+  page and heading reads, a paginated catalog, incoming/outgoing relationships and
+  reverse source references make context directly retrievable through tools.
+- **Managed taxonomy and diagnostics.** Use tag counts, tag inspection,
+  deterministic suggestion context, taxonomy validation and structural/editorial
+  diagnostics. Catalog and search update with accepted changes; agents do not
+  maintain an index or activity log by hand.
+- **MCP access with distinct identities.** A personal agent manages knowledge;
+  an optional separate factchecker can submit its own work but cannot edit the
+  records it checks. External OAuth and local permission assignments govern access.
+- **Owner-controlled publication.** Publish a specific revision and explicitly
+  selected attachments through a browser confirmation page. Subsequent edits stay
+  private until approved; linked sources and records do not inherit public access.
+  Published content is available to anonymous MCP readers when enabled.
+- **Incremental factchecking.** Queue the initially unchecked eligible corpus,
+  then detect substantive content and evidence changes. External agents receive
+  versioned tasks through MCP polling or signed webhooks and return structured
+  claims, verdicts and evidence.
+- **Separate knowledge reviews.** Start a selected review campaign or enable a
+  periodic corpus review. Receive factual findings and proposals concerning stale
+  content, duplicates and relationships, without automatic knowledge edits.
+- **Recoverable agent workflows.** Reservations, leases, saved progress, bounded
+  retries and durable results support interrupted work. Generated evidence reports,
+  campaign totals and escalation events remain available independently of optional
+  notification delivery.
+- **Self-hosted operations.** Docker Compose packages API, worker, PostgreSQL,
+  Authelia and Caddy. Persistent data, attachments and credentials are separated
+  from application images, with documented backup, restore and upgrade procedures.
+
+## Product boundaries
+
+Each instance serves one knowledge base and one owner, with multiple distinguishable
+agent identities. MCP is the primary working interface; the browser UI is limited
+to publication approval, not a general-purpose notes editor or public wiki website.
+
+The service does not include an LLM or execute research itself. You supply an
+external agent and its model/search capabilities; the protocol is not tied to
+Hermes or a particular model provider. Self-hosted storage does not mean that data
+stays local when you grant access to a cloud-based agent.
+
+Search is lexical, not vector-based. This is not an Obsidian vault, a multi-user
+collaboration platform or an automatic chat-memory integration. Factchecking
+records evidence and uncertainty; it does not guarantee that a claim is true.
+
+PostgreSQL stores knowledge and workflow state; Markdown is the text format, not
+the database. See [MCP v2](docs/MCP.md) for the interface and
+[local acceptance evidence](docs/VERIFICATION.md) for tested behavior and limits.
 
 Publication, factchecking and periodic review are disabled by default. No personal
 corpus, external agent, schedule or deployment is initialized automatically.

@@ -16,6 +16,9 @@ import { complete, fail, listEvents, markEvent, assignmentResult } from '../fact
 import { errorResult } from '../runtime/errors.ts';
 import { BlobStore } from '../storage/blobs.ts';
 import { snapshotSchema, catalogItem, searchItem, boundedList, pageInput, jobInput, claimInput, searchInput } from './schemas.ts';
+import { coreTools } from './core-tools.ts';
+import { workTaskSchema } from './work-schemas.ts';
+import { requireCondition } from '../runtime/errors.ts';
 const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
 const { z } = await import('zod');
 
@@ -23,18 +26,46 @@ export interface McpContext { db: SQL; identity: Identity; publicationEnabled: b
 export function createMcp(context: McpContext) {
   const { db, identity, publicationEnabled, work, blobs } = context;
   const reader = new Reader(db, identity, { publicEnabled: publicationEnabled }), queue = new Queue(db,work);
-  const server = new McpServer({ name: 'llm-wiki', version: '2.0.0' });
+  const server = new McpServer({ name: 'llm-wiki', version: '3.0.0' });
+  const native=coreTools(context),registered=new Set<string>();
   function tool<I extends Zod.ZodRawShape, O extends Zod.ZodRawShape>(name: string, description: string, input: Zod.ZodObject<I>, output: Zod.ZodObject<O>,
-    handler: (args: Zod.infer<Zod.ZodObject<I>>) => Promise<unknown>, readonly = true) {
-    const envelope = z.object({ version: z.literal(2), data: output.optional(), error: z.object({ code: z.string(), message: z.string(), status: z.number() }).strict().optional() }).strict();
-    server.registerTool(name, { description, inputSchema: input, outputSchema: envelope, annotations: { readOnlyHint: readonly, destructiveHint: false, openWorldHint: false } }, async args => {
+    handler: (args: Zod.infer<Zod.ZodObject<I>>) => Promise<unknown>, readonly = true,defaultVersion:2|3=2) {
+    registered.add(name);
+    const v3=native.get(name);
+    const shape:Zod.ZodRawShape={...input.shape};
+    if(v3)for(const [key,value] of Object.entries(v3.input.shape))shape[key]=key in shape?z.union([shape[key]!,value]):value;
+    // Version-specific strict parsing below owns required fields and forbids cross-version mixing.
+    const advertised=z.object(shape).partial().extend({contract_version:z.union([z.literal(2),z.literal(3)]).default(defaultVersion)}).strict();
+    const envelope = z.object({ version: z.union([z.literal(2),z.literal(3)]), data: (v3?z.union([output,v3.output]):output).optional(), error: z.object({ code: z.string(), message: z.string(), status: z.number() }).strict().optional() }).strict();
+    server.registerTool(name, { description: v3?`${description} Native v3: ${v3.description}`:description, inputSchema: advertised, outputSchema: envelope, annotations: { readOnlyHint: readonly, destructiveHint: false, openWorldHint: false } }, async args => {
+      const {contract_version:version,...fields}=advertised.parse(args);
       try {
+        requireCondition(version===3||defaultVersion===2,'unsupported_contract','This tool requires contract_version=3',409);
+        requireCondition(version!==3||name!=='wiki_tags','unsupported_contract','wiki_tags is a legacy-only projection; use wiki_terms_list with v3',409);
+        if(version===2&&readonly&&name.startsWith('wiki_')&&!name.startsWith('wiki_assignment')&&!name.startsWith('wiki_review')&&!name.startsWith('wiki_events')) {
+          reader.ensureAccess();
+          // Never return a fabricated old type or silently omit native catalog entries.
+          const explicitId=idSchema.safeParse(fields.id);
+          const exact=name==='wiki_get_page'?pageInput.parse(fields):explicitId.success?{id:explicitId.data,revision:undefined}:null;
+          const rows=await db`SELECT v.id FROM records r JOIN revisions v
+            ON v.id=COALESCE(${exact?.revision??null}::uuid,CASE WHEN ${reader.privateAccess} THEN r.current_revision ELSE r.published_revision END)
+            JOIN revision_details d ON d.revision_id=v.id WHERE (NOT r.archived OR (${!!exact} AND ${reader.privateAccess})) AND d.native
+            AND (${exact?.id??null}::uuid IS NULL OR r.id=${exact?.id??null}) AND v.record_id=r.id
+            AND (${reader.privateAccess} OR r.published_revision=v.id) LIMIT 1`;
+          requireCondition(!rows.length,'unsupported_contract','Visible native data requires contract_version=3',409);
+        }
         // Serialization normalizes database timestamps before strict output validation.
-        const data = output.parse(JSON.parse(JSON.stringify(await handler(input.parse(args)))));
-        const content = { version: 2 as const, data };
+        const result=version===3&&v3?await v3.run(fields):await handler(input.parse(fields));
+        if(version===2&&['wiki_factcheck_next','wiki_review_next','wiki_assignment_get'].includes(name)) {
+          const parsed=workTaskSchema.nullable().safeParse(name==='wiki_assignment_get'?result:
+            result&&typeof result==='object'&&'task' in result?result.task:null);
+          requireCondition(!parsed.success||parsed.data?.version!==2,'unsupported_contract','Assignment requires contract_version=3; its pinned snapshot is unchanged',409);
+        }
+        const data = (version===3&&v3?v3.output:output).parse(JSON.parse(JSON.stringify(result)));
+        const content = { version, data };
         return { content: [{ type: 'text', text: JSON.stringify(content) }], structuredContent: content };
       } catch (error) {
-        const content = { version: 2 as const, error: errorResult(error) };
+        const content = { version, error: error instanceof z.ZodError?{code:'invalid_input',message:'Request or result does not match the contract',status:400}:errorResult(error) };
         return { isError: true, content: [{ type: 'text', text: JSON.stringify(content) }], structuredContent: content };
       }
     });
@@ -77,9 +108,15 @@ export function createMcp(context: McpContext) {
   const task = z.object({ version: z.literal(1), job_id: idSchema, kind: z.enum(['factcheck','review']), state: z.string(),
     workflow: z.object({ version: z.literal(workflow.version), instructions: z.array(z.string()) }).strict(), snapshots: z.array(snapshotSchema),
     progress: z.unknown().nullable(), result_schema: z.record(z.unknown()) }).strict();
-  for (const kind of ['factcheck','review'] as const) tool(`wiki_${kind}_next`,'Obtain available work; claim before researching.',empty,z.object({ task: task.nullable() }).strict(),async () => ({ task: await queue.next(identity,kind) }),false);
+  for (const kind of ['factcheck','review'] as const) {
+    native.set(`wiki_${kind}_next`,{description:'Pinned native or preserved legacy assignment. Claim before researching.',input:empty,
+      output:z.object({task:workTaskSchema.nullable()}).strict(),run:async args=>{empty.parse(args);return {task:await queue.next(identity,kind)};},readonly:false});
+    tool(`wiki_${kind}_next`,'Obtain available work; claim before researching.',empty,z.object({ task: task.nullable() }).strict(),async () => ({ task: await queue.next(identity,kind) }),false);
+  }
   tool('wiki_review_start','Start a bounded review campaign of current snapshots.',z.object({ ids: z.array(idSchema).min(1).max(100), idempotency_key: z.string().min(1).max(128) }).strict(),
     z.object({ campaign_id: idSchema, jobs: z.array(idSchema) }).strict(),a => queue.reviewStart(identity,a.ids,a.idempotency_key),false);
+  native.set('wiki_assignment_get',{description:'Read the exact versioned assignment snapshot.',input:jobInput,output:workTaskSchema,
+    run:args=>queue.snapshot(identity,jobInput.parse(args).job_id),readonly:true});
   tool('wiki_assignment_get','Read a pinned assignment.',jobInput,task,a => queue.snapshot(identity,a.job_id));
   tool('wiki_assignment_result','Read the full accepted structured evidence behind a bounded readout.',jobInput,
     z.object({job_id:idSchema,result:resultSchema.nullable()}).strict(),a=>assignmentResult(db,identity,a.job_id));
@@ -96,5 +133,6 @@ export function createMcp(context: McpContext) {
   tool('wiki_events_list','List durable escalations; delivery, acknowledgement and resolution are independent.',z.object({ offset: z.number().int().min(0).max(100000).default(0) }).strict(),
     z.object({ events: z.array(z.object({ id: idSchema, job_id: idSchema.nullable(), kind: z.string(), detail: z.record(z.unknown()), acknowledged_by:z.string().nullable(),acknowledged_at:z.string().nullable(),resolved_by:z.string().nullable(),resolved_at:z.string().nullable(),resolution:z.string().nullable(),created_at:z.string() }).strict()) }).strict(),async a => ({ events:await listEvents(db,identity,a.offset) }));
   for (const action of ['acknowledge','resolve'] as const) tool(`wiki_event_${action}`,'Record operator event handling without conflating delivery state.',z.object({ id:idSchema,resolution:z.string().min(1).max(5000).optional() }).strict(),z.object({ saved:z.boolean() }).strict(),a => markEvent(db,identity,a.id,action,a.resolution),false);
+  for(const [name,spec] of native)if(!registered.has(name))tool(name,spec.description,spec.input,spec.output,spec.run,spec.readonly,3);
   return server;
 }

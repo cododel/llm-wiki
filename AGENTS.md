@@ -11,18 +11,24 @@ This repository contains a standalone single-owner knowledge service, not an ins
 
 ## Ownership
 
-- `src/content` owns revisions, taxonomy, provenance and publication.
+- `src/content` owns generic records, sources, skills, revisions, organization, provenance and publication.
 - `src/auth` verifies external identities and browser sessions; it does not issue OAuth tokens.
 - `src/storage` owns PostgreSQL migrations and immutable original bytes.
 - `src/search` searches authorized revisions before ranking.
 - `src/factcheck` owns detection, snapshots, claim/lease, results and escalation.
 - `src/delivery` owns signed outbox delivery, not successful research.
-- `src/mcp` owns strict v2 tool schemas; `src/runtime` composes API and worker.
+- `src/mcp` owns strict versioned v2/v3 tool schemas; `src/runtime` composes API and worker.
 - No shell, arbitrary filesystem access or auth-configuration operations may be exposed through MCP.
 
 ## Invariants
 
 Source bytes, accepted revisions and their relationships are immutable. Current and published revisions differ. Agent tokens never confirm publication. Publication, factcheck and periodic review start disabled. Agents do not manually maintain a filesystem index or Git history of knowledge.
+
+The product owns a fixed relational schema. Instance customization is data: topics, formats,
+collections and non-executable skills, never arbitrary fields or DDL. New instances are empty.
+Do not fabricate v2 types/tags for native records or silently omit unsupported data. Preserve
+historical snapshots, migration checksums and checkpoint identity across upgrades. Edit locks
+are independent from publication; only an explicit local manage_locks capability changes them.
 
 Scopes do not assign roles: require a verified subject/client pair in external local configuration. Introspection runs on every authorized HTTP request and fails closed. Gate content, metadata, links, counts, excerpts and attachments before disclosure.
 

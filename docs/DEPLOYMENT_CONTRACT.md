@@ -1,6 +1,6 @@
 # Deployment and initialization contract
 
-Status: normative service v2 contract.
+Status: normative service deployment contract for v2/v3.
 
 The distribution contains Caddy, Authelia, PostgreSQL, API and worker. One pinned Bun image
 runs either application mode. Only Caddy publishes host ports. PostgreSQL contains separate
@@ -14,7 +14,7 @@ persistent volume. Credentials and local grants live in an operator-owned extern
 not in knowledge, source control, logs or task envelopes.
 
 Configuration generation refuses an existing target directory. Database initialization and
-versioned migrations are transactional and locked; neutral taxonomy is seeded once. No personal
+versioned migrations are transactional and locked; new instances seed no taxonomy or content. No personal
 corpus, demonstration content, source Git history or service development documents are imported.
 Interrupted database initialization rolls back and is retryable. A failed configuration
 generation may leave an incomplete protected directory; the operator inspects it before choosing
@@ -24,6 +24,12 @@ Image replacement/restart preserves content and work state. Migration checksums 
 historical migrations. Dependencies are exact-pinned with a frozen lockfile in the image;
 no code or node_modules belongs in data volumes. Search vectors are transactional PostgreSQL
 derived data, not a second file vault or SQLite index.
+
+V2 upgrades stop API and worker together. Additive schema migration registers a bounded,
+resumable projection of historical revisions; startup finishes pending batches before serving.
+Old revision payloads and job snapshots remain immutable. Current and published pointers retain
+their exact revision identities. A failed upgrade is resumed or rolled back through a coherent
+backup, never by running a mixed-version fleet or deleting new tables under active processes.
 
 ## Recovery and acceptance
 

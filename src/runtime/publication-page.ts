@@ -1,5 +1,6 @@
 import type { SQL } from 'bun';
 import { BrowserAuth } from '../auth/browser.ts';
+import { CoreReader } from '../content/core-reads.ts';
 import { Reader } from '../content/reads.ts';
 import { approvePublication } from '../content/publication.ts';
 import { idSchema } from '../content/schema.ts';
@@ -9,6 +10,12 @@ const escape = (text: string) => text.replace(/[&<>"']/g, c => ({'&':'&amp;','<'
 function html(body: string): Response {
   return new Response(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Wiki publication approval</title><body><h1>Publication approval</h1>${body}</body></html>`,
     { headers: { 'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",'X-Content-Type-Options':'nosniff' } });
+}
+export async function publicationPreview(reader:CoreReader,id:string,revision:string) {
+  const native=await reader.record(id,revision);
+  // V2 can expose typed metadata absent from the native projection. Approval must show it all.
+  const legacy=native.legacy_revision===revision?await new Reader(reader.db,reader.identity,reader.policy).page(id,revision):null;
+  return {native,legacy};
 }
 export async function publicationPage(request: Request, db: SQL, browser: BrowserAuth, enabled: boolean) {
   requireCondition(enabled, 'disabled', 'Publication is disabled',404);
@@ -32,11 +39,11 @@ export async function publicationPage(request: Request, db: SQL, browser: Browse
   const rows = await db<{ record_id:string;revision_id:string;state:string;attachments:string[];published_revision:string|null }[]>`
     SELECT p.record_id,p.revision_id,p.state,p.attachments,r.published_revision FROM publication_requests p JOIN records r ON r.id=p.record_id WHERE p.id=${id}`;
   requireCondition(rows.length,'not_found','Request unavailable',404);
-  const row = rows[0]!, reader = new Reader(db,session.identity,{publicEnabled:enabled});
-  const page = await reader.page(row.record_id,row.revision_id);
-  const old = row.published_revision ? await reader.page(row.record_id,row.published_revision) : null;
+  const row = rows[0]!, reader = new CoreReader(db,session.identity,{publicEnabled:enabled});
+  const page = await publicationPreview(reader,row.record_id,row.revision_id);
+  const old = row.published_revision ? await publicationPreview(reader,row.record_id,row.published_revision) : null;
   const jobs = await db<{ state:string;result:unknown }[]>`SELECT state,result FROM jobs WHERE revision_id=${row.revision_id} ORDER BY created_at DESC LIMIT 20`;
-  return html(`<h2>${escape(page.title)}</h2><p>Request state: ${escape(row.state)}. Revision: ${row.revision_id}</p>
+  return html(`<h2>${escape(page.native.document.title)}</h2><p>Request state: ${escape(row.state)}. Revision: ${row.revision_id}</p>
     <p>Factchecking informs your decision; it does not block publication.</p><h3>Check results</h3><pre>${escape(JSON.stringify(jobs,null,2))}</pre>
     <h3>Previous public revision</h3><pre>${escape(old ? JSON.stringify(old,null,2) : '(not published)')}</pre>
     <h3>Requested revision (complete content and metadata)</h3><pre>${escape(JSON.stringify(page,null,2))}</pre>

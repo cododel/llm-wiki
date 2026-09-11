@@ -112,6 +112,24 @@ instance until recovery is accepted. The unified test exercises a synthetic rest
 Back up first. Review immutable SQL migrations, pinned images and release notes. Test the new
 image against a restored disposable backup before replacing API/worker. Both run locked,
 transactional migrations and seed once; image replacement does not overwrite content.
+For v2-to-v3, stop **both API and worker** throughout the maintenance window; do not run mixed
+versions against one database. Migration 005 adds the fixed model and records pending historical
+projections. Startup processes batches of 1,000 revisions transactionally before opening API or
+worker loops. A crash rolls back only its active batch; restart resumes pending rows. Existing
+revisions, bytes, published pointers, requests, jobs and checkpoint fingerprints are not rewritten.
+Check `SELECT count(*) FROM legacy_backfill_pending` through the operator's database console:
+zero means projection is complete, not that all release acceptance has passed. Do not manually
+remove pending rows. Repeat startup is safe. New installations seed no taxonomy or content;
+old taxonomy becomes topics and old editorial types become format labels. Legacy maturity stays unknown.
+
+Clients should discover v3 using `wiki_describe`. Existing v2 clients remain usable for legacy
+content but must handle `unsupported_contract` when native knowledge enters their read scope.
+Do not downgrade by dropping new columns/tables or rewriting sealed revisions. If rollback is
+needed, restore the complete pre-upgrade backup with the matching old image.
+
+Edit locks are not ownership permissions. To delegate lock management, deliberately add
+`"capabilities": ["manage_locks"]` to the exact personal-agent entry in the external grant file,
+then recreate API/worker. No skill or requested OAuth scope grants this capability.
 Rollback means restoring a coherent prior database/blob/config backup with its matching image,
 not running an older binary blindly on a newer schema.
 

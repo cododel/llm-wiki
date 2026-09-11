@@ -1,92 +1,73 @@
-# Knowledge content vocabulary
+# Fixed knowledge vocabulary
 
-This document owns the retained semantic vocabulary. The [knowledge contract](docs/KNOWLEDGE_CONTRACT.md) owns persistence and changes; [access](docs/ACCESS_CONTRACT.md) owns publication. Wire validation is defined in `src/content/schema.ts` and exposed through MCP v2 tool schemas.
+This document owns semantic vocabulary. The [knowledge contract](docs/KNOWLEDGE_CONTRACT.md)
+owns persistence and changes; [access](docs/ACCESS_CONTRACT.md) owns permissions and publication.
+The database schema belongs to the product, not to an instance or agent.
 
-## Twelve record types
+## Three kinds, optional editorial organization
 
-| Type | Purpose | Required discovery tag |
-| --- | --- | --- |
-| raw-source | Exact preserved original, separate from interpretation | source |
-| readout | Dated evidence, observations and research | readout |
-| entity | A notable person, organization, tool or other thing | Relevant semantic tag |
-| concept | Durable synthesis with evidence and uncertainty | Relevant semantic tag |
-| comparison | Alternatives, dimensions, evidence and limitations | comparison |
-| query | A researched question and bounded answer | summary |
-| idea | Hypothesis, motivation, variants and open questions | idea |
-| note | Lightweight observations, bookmarks or learning | thought or learning |
-| article-draft | Source-backed working article, preserving the original | content |
-| post-draft | Working post, preserving the author's voice | content |
-| meta | Navigation, workflow or instance-level guidance | meta, wiki, tool, mcp or workflow |
-| adr | One decision with context, alternatives and consequences | adr |
+| Kind | Purpose |
+| --- | --- |
+| record | A generic knowledge object: a note, person, idea, decision, draft or synthesis |
+| source | Preserved original bytes and provenance, distinct from interpretation |
+| skill | Revisioned instructions and application context, never executable code |
 
-There is no generic draft or summary record type. Summary remains a taxonomy tag.
-A directory is not an entity. IDs are stable UUIDs; titles and lowercase kebab-case
-slugs may change. Ambiguous slugs/titles return candidates, never a guessed match.
+A record requires only a title. Body, topics, format, relations and sources may be empty.
+Stable UUIDs survive renames; slug/title resolution reports ambiguity. Markdown is text, not
+frontmatter, a path, or an implicit relationship database. There are no instance-defined fields,
+types, arbitrary JSON attributes, schema registries, EAV storage or DDL tools.
 
-## Revisions and sources
+Topics describe reusable subject matter. A format optionally describes editorial purpose,
+such as note, research report, concept or decision. Both have stable IDs, names and aliases;
+labels are not keys. Collections provide ordered private navigation across kinds. An instance
+can use only generic records forever, or its agent can offer optional onboarding and explicitly
+create organization requested by the owner. Nothing is seeded into the knowledge catalog.
 
-Text bodies are Markdown, not frontmatter-bearing files. Metadata, tags,
-relationships, provenance and attachment references are structured fields in a
-revision. Every revision has nonempty governed tags. Server-generated timestamps,
-hashes and reverse provenance are not client-maintained fields.
+## Independent dimensions
 
-Raw intake supplies canonical base64 original bytes, a checksum and provenance:
-`source_kind`, `source_channel`, and `capture_boundary` (complete, excerpt or
-attachment). The server computes and verifies the hash over original bytes, never
-metadata. Corrections create another source revision. Text original bytes can
-include CRLF, trailing newlines and bytes that are not present in the display body.
+Maturity is `seed`, `growing` or `evergreen`. New generic records start as seed; legacy records
+retain unknown maturity (`null`). Sources and skills have no garden maturity. Maturity is not
+truth, confidence, publication, a lock or a successful factcheck.
 
-Source forms: user-note, chat, transcript, doc, article, asset-note, log.
-Channels: telegram, web, file, manual, import. Web sources require `source_url`.
-Optional filename, note and import batch describe provenance, not taxonomy.
-Binary originals are attached only after size, signature and checksum validation.
+Check policy is `automatic` or `manual`. Ordinary records default to automatic; sources and
+skills are manual. Sources are evidence; skills can be reviewed explicitly. Generated evidence
+reports never trigger recursive checks. Publication requires a separate owner decision, and
+edit locks require a separate local capability to manage.
 
-Provenance references preserved raw revisions or external HTTP(S) URLs.
-Processed-to-processed links use typed relations (related, supports, contradicts,
-supersedes), not provenance. `processed_to` is computed from accepted references.
-No arbitrary URL is downloaded automatically.
+## Evidence, navigation and instructions
 
-Preserve substantive short original input under “Original input” and an original
-draft under “Original draft”, or link a preserved source. Never replace original
-material with a generated summary. Strip agent-directed instructions only from
-processed quotations, never from a raw original. Voice and optional writing-agent
-configuration belong to the owner, not this distribution.
+- Navigation relations target stable object IDs: `related`, `supports`, `contradicts`,
+  `supersedes`, `about`, `part_of`.
+- Provenance targets exact source revision IDs or explicit HTTP(S) URLs. Reverse
+  `processed_to` is computed, not manually maintained.
+- `derived_from` pins a processed revision used in an interpretation. `used_skill` pins the
+  actual instruction revision applied. These do not move when the target changes.
+- Applicable skills use stable skill IDs. A skill's dependencies pin exact revisions, marked
+  required or optional; requirements describe necessary context. Fetch pinned dependencies
+  before following a skill. Instruction text cannot elevate permissions or authorize effects.
 
-## Metadata and lifecycle
+Source intake preserves canonical base64 original bytes separately from display Markdown.
+Server SHA-256 covers only those original bytes. Provenance requires `source_kind`,
+`source_channel` and `capture_boundary` (`complete`, `excerpt`, `attachment`); web origins require
+`source_url`. Source forms are user-note, chat, transcript, doc, article, asset-note and log;
+channels are telegram, web, file, manual and import. These describe capture, not editorial types.
+Corrections create another source revision. No arbitrary URL is downloaded automatically.
 
-`confidence` is high, medium or low and describes evidential support, not model
-confidence. `contested` marks unresolved disagreements; use contradiction relations
-and dated evidence. Newer evidence does not automatically overrule stronger evidence.
+Preserve original input before interpretation. Do not substitute summaries for originals,
+invent relationships to meet a quota, or confuse hypotheses with verified conclusions.
+Readouts retain dates and evidence; durable syntheses retain links to their basis. Draft editing
+preserves the author's intent and voice unless the owner requests otherwise. These are useful
+workflow principles, not mandatory folders or type names.
 
-Lifecycle values include draft, researching, incubating, ready, published, archived,
-observed, analyzed, acted-on, proposed, accepted, deprecated and superseded. Lifecycle
-labels never grant visibility or replace the explicit archival operation.
-Publication is owner confirmation of an exact revision, not a metadata boolean.
+## V2 compatibility
 
-## Taxonomy
+The original twelve types, typed metadata and tag requirements remain the **v2** wire contract
+for legacy revisions. Existing types become optional format classifications; existing tags
+become topics with stable IDs. No historical revision or accepted source is rewritten. The
+native response's `legacy_revision` points to the complete legacy representation; read that
+exact revision through v2 when its old metadata is needed. Private compatibility pointers are
+not disclosed by newly published native revisions.
 
-Initial tags preserve the template's neutral vocabulary:
-
-- Methods: pattern, architecture, methodology, workflow, tool, research, learning, thought.
-- Domains: person, company, open-source, engineering, product, security, automation.
-- Content: content, article, social-media, writing-style, seo, semantic-core.
-- Provenance: wiki, source, provenance, readout, evidence, analysis, factcheck, mcp.
-- Classification: idea, comparison, summary, meta, adr.
-
-Use existing reusable semantic facets. Do not encode dates, batches, statuses,
-one-off names or relationships as tags. New taxonomy entries require an explicit
-authorized `tag` operation in `wiki_apply_change`; ordinary record editing cannot
-silently create them. The server stores taxonomy usage from accepted revisions.
-
-## Editorial guidance
-
-Readouts describe dated evidence; concepts synthesize durable knowledge and retain
-the evidence link. Hypotheses are not verified facts. Draft editing preserves
-original voice unless the owner explicitly requests a change. Comparisons state
-their dimensions and limitations. Queries retain the question and uncertainty.
-ADR bodies preserve accepted reasoning; supersession links describe a new decision.
-
-Search before creating duplicates and preserve substantive relationships unless
-explicitly replacing them. Two useful links are a guideline, never a reason to
-invent relationships in a small corpus. Templates under `templates/` are optional
-editorial scaffolds and are never automatically ingested.
+The twelve Markdown files under `templates/` remain optional editorial scaffolds, never a
+required catalog, initialization corpus or source of schema migrations. See [MCP](docs/MCP.md)
+for version selection and explicit incompatibility errors.

@@ -1,17 +1,22 @@
 # Agent work and evidence contract
 
-Status: normative service v2 contract. Agents are external executors, not subprocesses of wiki.
+Status: normative versioned service contract. Agents are external executors, not wiki subprocesses.
 
 ## Two independently enabled processes
 
 Incremental factcheck is disabled by default. First activation fills a bounded queue with eligible
 unverified current content, then detects content/evidence fingerprint changes. A detection pass
 adds at most 100 jobs and keeps at most 100 pending/running incremental jobs. Further passes
-drain the initial corpus progressively. Raw, meta, ADR and generated reports are excluded as
-targets; notes, ideas, drafts and ordinary readouts are included. Raw remains evidence.
+drain the initial corpus progressively. Generic records with automatic check policy are eligible,
+regardless of editorial format. Sources are evidence; skills require explicit review. Generated
+reports are excluded. Legacy meta/ADR exclusions migrate to manual policy rather than remaining
+hard-coded editorial-type exclusions.
 
-Fingerprint includes type, title, body, explicit source revisions/URLs and attachments, not
-timestamps, status, publication, tags, slug or workflow state. Evidence refers to exact revisions:
+Native fingerprints include title, body, explicit source revisions/URLs, derivations, original
+hashes, skill instructions/context and attachments. They exclude maturity, check policy,
+classification, collection membership, locks, timestamps, publication and slug. Existing v2
+fingerprints are retained; non-evidence edits across the boundary preserve checkpoint identity.
+Evidence refers to exact revisions:
 updating a source does not silently retarget a processed record's provenance.
 
 Review is independently disabled. An explicit campaign fixes selected current revisions;
@@ -26,6 +31,11 @@ MCP polling and optional execution webhooks use the same durable PostgreSQL queu
 Assignments contain protocol/workflow versions, ID, pinned snapshot, bounded context, source
 references and the actual structured result schema. The current batch size is one record.
 Instructions contain no local profile, shell, Git, cron or provider-specific Batch API assumptions.
+Legacy tasks retain protocol version 1 and their stored snapshots. Native tasks use protocol
+version 2 with a contract-v3 record snapshot, including skill requirements and pinned context.
+Both use the existing result schema version 1 and workflow instructions. MCP v2 explicitly
+rejects native assignment retrieval; v3 can retrieve both. Delivery retries reuse the stored
+snapshot rather than rebuilding it from a newer revision.
 
 A delivered HTTP response is not completion. Both recipients must claim atomically before
 research. Claims bind to executor identity, token and lease. Each process has independent

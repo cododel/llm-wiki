@@ -44,6 +44,7 @@ try {
   await run([process.execPath, 'test', '--timeout', '30000', 'tests'], {
     TEST_DATABASE_URL: `postgres://postgres@127.0.0.1:${port}/${database}`,
   });
+  await run([process.execPath,'run','tests/load-probe.ts'],{TEST_DATABASE_URL:`postgres://postgres@127.0.0.1:${port}/${database}`});
   console.log('Service verification passed against disposable PostgreSQL');
 } finally {
   if (started) await run(['docker','rm','-f',container]);

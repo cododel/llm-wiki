@@ -27,10 +27,10 @@ silently correcting the knowledge base.
 
 ## Features
 
-- **Structured knowledge, flexible text.** Twelve record types cover raw sources,
-  research readouts, entities, concepts, comparisons, researched answers, ideas,
-  notes, article drafts, post drafts, metadata pages and architecture decisions.
-  Markdown bodies are paired with structured tags, relationships and provenance.
+- **A small fixed knowledge core.** Generic records need only a title. Sources
+  preserve originals; skills hold instructions and context. Optional topics,
+  formats, ordered collections and garden maturity organize the instance without
+  changing its database schema or forking the service.
 - **Source preservation.** Keep exact original text bytes and PNG, JPEG or PDF
   attachments with server-verified checksums. Source corrections create new
   revisions; processed records reference the evidence they used.
@@ -40,10 +40,9 @@ silently correcting the knowledge base.
 - **Search and navigation.** Russian/English full-text search, exact regex search,
   page and heading reads, a paginated catalog, incoming/outgoing relationships and
   reverse source references make context directly retrievable through tools.
-- **Managed taxonomy and diagnostics.** Use tag counts, tag inspection,
-  deterministic suggestion context, taxonomy validation and structural/editorial
-  diagnostics. Catalog and search update with accepted changes; agents do not
-  maintain an index or activity log by hand.
+- **Managed organization and diagnostics.** Govern topic/format IDs and aliases,
+  browse collections, follow revision-pinned derivations and inspect applicable
+  skills. Catalog, search and audit update with accepted changes.
 - **MCP access with distinct identities.** A personal agent manages knowledge;
   an optional separate factchecker can submit its own work but cannot edit the
   records it checks. External OAuth and local permission assignments govern access.
@@ -82,7 +81,7 @@ collaboration platform or an automatic chat-memory integration. Factchecking
 records evidence and uncertainty; it does not guarantee that a claim is true.
 
 PostgreSQL stores knowledge and workflow state; Markdown is the text format, not
-the database. See [MCP v2](docs/MCP.md) for the interface and
+the database. See [MCP](docs/MCP.md) for the interface and
 [local acceptance evidence](docs/VERIFICATION.md) for tested behavior and limits.
 
 Publication, factchecking and periodic review are disabled by default. No personal
@@ -111,7 +110,7 @@ bun run tools/initialize.ts --directory "$INSTANCE_DIR" \
 ```
 
 Generated credentials are saved under the protected instance directory, never
-printed. The instance starts with neutral taxonomy and an empty knowledge catalog.
+printed. The instance starts with an empty taxonomy and knowledge catalog.
 Code, service documentation and examples are not imported.
 
 Before deployment, follow [setup](docs/OPERATIONS.md#first-start): configure the
@@ -139,7 +138,10 @@ grant, expiry, audience and required scopes.
 The eleven familiar read tools remain, but their arguments use IDs/revisions,
 not vault paths. Typed atomic changes, source/attachment intake, publication
 requests, assignment lifecycle and escalation tools are added. See
-[MCP v2](docs/MCP.md) and [content vocabulary](SCHEMA.md).
+[MCP](docs/MCP.md) and [content vocabulary](SCHEMA.md). A memoryless agent starts
+with `wiki_describe`, then uses `contract_version: 3` on existing tools. It can
+offer onboarding, but a single unclassified record is already valid. Skills and
+context are fetched progressively, not injected as an unbounded global prompt.
 
 There is no unauthenticated local administrative transport. Development clients use
 the same HTTP authorization boundary as remote clients.
@@ -175,7 +177,9 @@ for pinned image/dependency downloads. Do not install `node_modules` in this che
 [Contracts and ADRs](docs/README.md) describe the maintained boundaries.
 [Operations](docs/OPERATIONS.md) covers backup, restore, upgrades and secret rotation.
 The former Markdown-template runtime is not a supported parallel backend. Migration
-means creating a new empty service instance; corpus import is a separate explicit task.
+from a file vault means creating an empty service instance; corpus import is separate.
+Existing PostgreSQL v2 instances instead use the additive, resumable upgrade described
+in [operations](docs/OPERATIONS.md#upgrades-and-secret-rotation); no fork is required.
 
 A real ChatGPT OAuth reconnect and scheduled execution are separate operator tests.
 Local protocol tests do not certify a particular client connection.

@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { connect, migrate } from '../src/storage/database.ts';
-import { seed } from '../src/storage/seed.ts';
+import { seed } from './legacy-seed.ts';
 import { applyChange } from '../src/content/changes.ts';
 import { Reader } from '../src/content/reads.ts';
 import { search, regexSearch } from '../src/search/search.ts';

@@ -1,6 +1,7 @@
 import { SQL, type TransactionSQL } from 'bun';
 import { readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import {backfillCore} from './backfill.ts';
 
 export type Transaction = TransactionSQL;
 export type Database = SQL | Transaction;
@@ -29,4 +30,5 @@ export async function migrate(db: SQL): Promise<void> {
       await tx`INSERT INTO schema_migrations(name,checksum) VALUES (${name},${checksum})`;
     }
   });
+  await backfillCore(db);
 }

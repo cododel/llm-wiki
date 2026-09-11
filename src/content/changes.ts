@@ -5,6 +5,7 @@ import { requireCondition, ServiceError } from '../runtime/errors.ts';
 import { sha256, type Transaction } from '../storage/database.ts';
 import { canonical, changeSchema, documentSchema, type Document, type RecordType } from './schema.ts';
 import { discoveryTags } from './taxonomy.ts';
+import { projectLegacyRevision } from './legacy-projection.ts';
 
 export async function writeRevision(tx: Transaction, identity: Identity, id: string, type: RecordType, doc: Document,
   original: Uint8Array | null = null, generated = false): Promise<string> {
@@ -44,6 +45,7 @@ export async function writeRevision(tx: Transaction, identity: Identity, id: str
     requireCondition(blob.length, 'invalid_attachment', 'Attachment must be finalized before use');
     await tx`INSERT INTO revision_blobs VALUES (${revision},${hash})`;
   }
+  await projectLegacyRevision(tx,revision,type);
   await tx`INSERT INTO revision_seals VALUES(${revision})`;
   await tx`UPDATE records SET current_revision=${revision} WHERE id=${id}`;
   await tx`UPDATE publication_requests SET state='stale' WHERE record_id=${id} AND state='pending'`;
@@ -73,6 +75,11 @@ export async function applyChange(db: SQL, identity: Identity, input: unknown) {
       requireCondition(!targets.has(op.id), 'duplicate_target', 'One operation per record per change group');
       targets.add(op.id);
       const existing = await tx`SELECT current_revision,type,archived FROM records WHERE id=${op.id} FOR UPDATE`;
+      if(existing.length) {
+        const [guard]=await tx`SELECT r.edit_locked,d.native FROM records r LEFT JOIN revision_details d ON d.revision_id=r.current_revision WHERE r.id=${op.id}`;
+        requireCondition(!guard.edit_locked,'edit_locked','Object is locked',409);
+        requireCondition(!guard.native,'unsupported_contract','Use contract_version=3 to preserve native data',409);
+      }
       const isNew = op.op === 'create' || (op.op === 'source' && op.expected_revision === null);
       if (isNew) {
         requireCondition(!existing.length, 'revision_conflict', 'Record already exists', 409);

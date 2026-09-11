@@ -24,7 +24,7 @@ await mkdir(join(directory,'secrets'),{mode:0o700});await mkdir(join(directory,'
 async function save(path: string, value: string) {
   // Parent directories remain owner-only. Individual Docker secret mounts must be
   // readable by the unprivileged API process; other host users cannot traverse them.
-  const mounted = ['secrets/database-url','secrets/auth-grants.json','secrets/introspection-secret','secrets/browser-secret','secrets/session-key'];
+  const mounted = ['secrets/database-url','secrets/auth-grants.json','secrets/introspection-secret','secrets/browser-secret','secrets/session-key','secrets/wiki-db-password','secrets/auth-db-password'];
   const file=await open(join(directory,path),'wx',mounted.includes(path) ? 0o644 : 0o600);
   try { await file.writeFile(value);await file.sync(); } finally {await file.close();}
 }

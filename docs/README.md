@@ -15,10 +15,13 @@ The operator accepted the service direction on 2026-09-08 and the implementation
 ## Selected implementation boundary
 
 The approved implementation uses Bun, PostgreSQL through Bun.SQL, external Authelia,
-stable-ID MCP v2, owner-confirmed revision publication, and separate incremental
+stable-ID MCP v2/v3, owner-confirmed revision publication, and separate incremental
 factchecking and review processes. The original eleven read names remain; file-path
 arguments are replaced, not silently emulated. API and worker share a PostgreSQL
 queue and outbox without another broker.
+The v3 knowledge core uses generic records, specialized sources and non-executable skills.
+Topics, formats, maturity and ordered collections customize instance data without schema forks.
+Existing v2 snapshots remain explicit compatibility data, not a mandatory native taxonomy.
 
 Modules live in `src/content`, `src/factcheck`, `src/auth`, `src/storage`, `src/search`,
 `src/mcp`, `src/delivery`, and `src/runtime`. Automatic bidirectional filesystem

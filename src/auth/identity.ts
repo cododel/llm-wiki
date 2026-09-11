@@ -1,8 +1,8 @@
 import { requireCondition } from '../runtime/errors.ts';
 
 export type Role = 'personal' | 'factchecker' | 'owner' | 'public';
-export interface Identity { actor: string; subject: string; client: string; role: Role }
-export interface Grant { subject: string; client: string; role: Exclude<Role, 'public'> }
+export interface Identity { actor: string; subject: string; client: string; role: Role; capabilities?: ('manage_locks')[] }
+export interface Grant { subject: string; client: string; role: Exclude<Role, 'public'>; capabilities?: ('manage_locks')[] }
 export const anonymous: Identity = { actor: 'public', subject: '', client: '', role: 'public' };
 export function requireRole(identity: Identity, ...roles: Role[]): void {
   requireCondition(roles.includes(identity.role), 'forbidden', 'Operation not permitted', 403);
@@ -48,5 +48,5 @@ export async function authenticate(request: Request, config: AuthConfig, fetcher
   const scopes = new Set(value.scope.split(' '));
   const required = grant.role === 'personal' ? ['wiki:read', 'wiki:write'] : grant.role === 'factchecker' ? ['wiki:read', 'wiki:factcheck'] : ['wiki:owner'];
   requireCondition(required.every(scope => scopes.has(scope)), 'forbidden', 'Required scope missing', 403);
-  return { actor: JSON.stringify([config.issuer, grant.subject, grant.client]), subject: grant.subject, client: grant.client, role: grant.role };
+  return { actor: JSON.stringify([config.issuer, grant.subject, grant.client]), subject: grant.subject, client: grant.client, role: grant.role, capabilities:grant.capabilities??[] };
 }

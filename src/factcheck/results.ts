@@ -7,6 +7,9 @@ import { sha256 } from '../storage/database.ts';
 import { requireCondition } from '../runtime/errors.ts';
 import { resultSchema } from './protocol.ts';
 import { dispatch, emitEvent, type Job } from './queue.ts';
+import {isNativeSnapshot} from './snapshot.ts';
+import {writeCoreRevision} from '../content/core-write.ts';
+import {coreDocumentSchema} from '../content/core-schema.ts';
 
 export async function complete(db: SQL, identity: Identity, id: string, token: string, input: unknown) {
   requireRole(identity, 'personal', 'factchecker');
@@ -48,7 +51,14 @@ export async function complete(db: SQL, identity: Identity, id: string, token: s
       relations: [{ target: job.target_id, kind: 'related' }], sources: job.snapshot.sources, attachments: [],
     };
     await tx`INSERT INTO records(id,type) VALUES(${readoutId},'readout')`;
-    await writeRevision(tx, identity, readoutId, 'readout', document, null, true);
+    if(isNativeSnapshot(job.snapshot))await writeCoreRevision(tx,identity,readoutId,'record',coreDocumentSchema.parse({
+      title:document.title,slug:document.slug,body:document.body,check_policy:'manual',maturity:null,
+      relations:document.relations,sources:document.sources,derivations:[{revision:job.revision_id,kind:'derived_from'}],
+    }),{generated:true});
+    else {
+      for(const tag of document.tags)await tx`INSERT INTO taxonomy VALUES(${tag},${'Legacy generated evidence'}) ON CONFLICT DO NOTHING`;
+      await writeRevision(tx, identity, readoutId, 'readout', document, null, true);
+    }
     await tx`UPDATE jobs SET state=${state},result=${result}::jsonb,result_hash=${resultHash},updated_at=now() WHERE id=${id}`;
     if (!blocked && job.kind === 'factcheck') await tx`INSERT INTO checkpoints VALUES(${job.target_id},${job.fingerprint},${id}) ON CONFLICT DO NOTHING`;
     if (blocked) await emitEvent(tx, id, 'clarification', { reason: entry.reason });

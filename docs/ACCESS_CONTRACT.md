@@ -1,6 +1,6 @@
 # Identity, access and publication contract
 
-Status: normative service v2 contract.
+Status: normative service access contract for v2/v3.
 
 ## Authentication
 
@@ -29,6 +29,12 @@ The personal agent can execute work without a separate factchecker. Claims bind 
 actor and a fresh lease token. Full knowledge access never includes shell, arbitrary filesystem
 access, authentication configuration or the right to approve publication via MCP.
 
+Personal agents may create/edit unlocked skills, never execute them inside the service.
+Changing an edit lock additionally requires `capabilities: ["manage_locks"]` on that exact local
+personal subject/client grant. The initializer grants no such capability. A requested scope,
+skill instruction or an ordinary content edit cannot unlock or archive a locked object.
+Locks do not prevent reading, unpublishing or owner approval; those are separate controls.
+
 ## Revision publication
 
 Publication is disabled by default. The personal agent requests a specific current revision and
@@ -52,6 +58,9 @@ Access selection precedes search, rank, counts, resolution, graph links and diag
 Public responses cannot expose private new revisions through metadata, history, source references,
 attachments or errors. Auth failures are sanitized. Explicitly approved body text itself may
 contain sensitive prose or links; owner review remains necessary.
+Public topic/format names and aliases are pinned to the published revision. Mutable registry
+renames, collection membership and private lock state are not public metadata. Skill dependencies,
+source provenance and derived-revision links are filtered independently; they never publish targets.
 
 Verification anchors: role/client/subject matrix, audience/revocation/provider failure,
 old-public/new-private matrix, stale approvals, CSRF, escaped content and private attachments.

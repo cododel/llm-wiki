@@ -21,7 +21,7 @@ if(process.argv[4]==='after') {
   const saved=JSON.parse(await readFile(join(root,'accepted.json'),'utf8'));
   let response:Response|undefined;
   for(let i=0;i<40;i++) {
-    response=await request(wiki,'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_get_page',arguments:{id:saved.id}}})});
+    response=await request(wiki,'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_get_page',arguments:{id:saved.id,contract_version:3}}})});
     if(response.status===200) break;
     await Bun.sleep(250);
   }
@@ -30,7 +30,7 @@ if(process.argv[4]==='after') {
   assert.equal(result.result.structuredContent.data.page.revision,saved.revision,'Published revision survives restart');
   assert(!JSON.stringify(result).includes('PRIVATE_NEW_REVISION'),'Private edit stays private after restart');
   const access=await token('factchecker','factchecker-secret',{grant_type:'client_credentials',scope:'wiki:read wiki:factcheck'});
-  const resumed=await mcp('wiki_assignment_get',{job_id:saved.reviewJob},access.access_token);
+  const resumed=await mcp('wiki_assignment_get',{job_id:saved.reviewJob,contract_version:3},access.access_token);
   assert.equal(resumed.result.structuredContent.data.progress.stage,'saved-before-restart');
   console.log('PASS restart preserves accepted publication without exposing private edits');
   process.exit(0);
@@ -83,7 +83,7 @@ const blobHash=createHash('sha256').update(png).digest('hex');
 assert(!(await mcp('wiki_ingest_attachment',{original_base64:png.toString('base64'),checksum:blobHash,media_type:'image/png'},personal.access_token)).result.isError,'Blob intake');
 assert.equal((await request(wiki,`/attachments/${blobHash}`)).status,404,'Unpublished attachment denied');
 const id=randomUUID();
-const changed=await mcp('wiki_apply_change',{idempotency_key:randomUUID(),operations:[{op:'create',id,type:'note',document:{title:'Test publication',slug:'test-publication',body:'<script>evil()</script> Preserved text',metadata:{},tags:['learning'],relations:[],sources:[],attachments:[blobHash]}}]},personal.access_token);
+const changed=await mcp('wiki_apply_change',{contract_version:3,idempotency_key:randomUUID(),operations:[{op:'create',id,document:{title:'Test publication',slug:'test-publication',body:'<script>evil()</script> Preserved text',attachments:[blobHash]}}]},personal.access_token);
 assert(!changed.result.isError,'Personal content write');
 const revision=changed.result.structuredContent.data.changed[0].revision;
 const publication=await mcp('wiki_request_publication',{id,revision,attachments:[blobHash]},personal.access_token);
@@ -98,9 +98,9 @@ const privateBlob=await request(wiki,`/attachments/${blobHash}`);assert.equal(pr
 const csrf=html.match(/name="csrf" value="([^"]+)"/)?.[1];assert(csrf,'CSRF token present');
 const denied=await request(wiki,`/publications?id=${requestId}`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Origin:`https://${wiki}`},body:'csrf=wrong'});assert.equal(denied.status,403);
 const approved=await request(wiki,`/publications?id=${requestId}`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',Origin:`https://${wiki}`},body:new URLSearchParams({csrf})});assert.equal(approved.status,200,'Owner confirmation');
-const edited=await mcp('wiki_apply_change',{idempotency_key:randomUUID(),operations:[{op:'edit',id,expected_revision:revision,document:{title:'PRIVATE_NEW_REVISION',slug:'private-new-revision',body:'PRIVATE_NEW_REVISION',metadata:{},tags:['learning'],relations:[],sources:[],attachments:[]}}]},personal.access_token);
+const edited=await mcp('wiki_apply_change',{contract_version:3,idempotency_key:randomUUID(),operations:[{op:'edit',id,expected_revision:revision,patch:{title:'PRIVATE_NEW_REVISION',slug:'private-new-revision',body:'PRIVATE_NEW_REVISION',attachments:[]}}]},personal.access_token);
 assert(!edited.result.isError,'Private edit after publication');
-const work=await mcp('wiki_factcheck_next',{},machine.access_token),task=work.result.structuredContent.data.task;
+const work=await mcp('wiki_factcheck_next',{contract_version:3},machine.access_token),task=work.result.structuredContent.data.task;
 assert(task,'Incremental work available');
 const claimed=await mcp('wiki_assignment_claim',{job_id:task.job_id},machine.access_token);
 assert(!claimed.result.isError);

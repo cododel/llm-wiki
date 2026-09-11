@@ -18,6 +18,11 @@ async function run(command:string[],capture=false) {
 let started=false,built=false;
 try {
   await run([process.execPath,'run',join(repository,'tools/initialize.ts'),'--directory',instance,'--wiki-host','wiki.wiki.test','--auth-host','auth.wiki.test','--tls-email','owner@example.invalid','--factchecker']);
+  // Exercise Linux container permissions as the PostgreSQL UID, without reading secrets into logs.
+  for(const name of ['wiki-db-password','auth-db-password'])await run(['docker','run','--rm','--user','70:70',
+    '--mount',`type=bind,source=${join(instance,'secrets',name)},target=/fixture/secret,readonly`,
+    'postgres:17.11-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73',
+    'sh','-c','test -r /fixture/secret']);
   const cert=Bun.spawnSync(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(scratch,'tls.key'),'-out',join(scratch,'tls.crt'),'-days','1','-subj','/CN=wiki.wiki.test','-addext','subjectAltName=DNS:wiki.wiki.test,DNS:auth.wiki.test,IP:127.0.0.1'],{stdout:'pipe',stderr:'pipe'});
   if(cert.exitCode!==0) throw new Error('Test TLS generation failed');
   await writeFile(join(scratch,'Caddyfile'),`{\n auto_https off\n}\nhttps://wiki.wiki.test {\n tls /fixture/tls.crt /fixture/tls.key\n reverse_proxy api:3000\n}\nhttps://auth.wiki.test {\n tls /fixture/tls.crt /fixture/tls.key\n reverse_proxy authelia:9091\n}\n`);
@@ -85,7 +90,8 @@ try {
   const restore=Bun.spawn([...compose,'exec','-T','postgres','pg_restore','-U','postgres','-d','wiki_restore','--exit-on-error'],{cwd:repository,stdin:'pipe',stdout:'inherit',stderr:'inherit'});
   restore.stdin.write(backup);restore.stdin.end();
   if(await restore.exited!==0) throw new Error('Disposable restore failed');
-  const tables=['records','revisions','revision_tags','relations','provenance','blobs','revision_blobs','publication_requests','published_blobs','audit','idempotency','revision_seals','jobs','campaigns','checkpoints','events','outbox','instance_state'];
+  const tables=['records','revisions','revision_tags','relations','provenance','blobs','revision_blobs','publication_requests','published_blobs','audit','idempotency','revision_seals','jobs','campaigns','checkpoints','events','outbox','instance_state',
+    'revision_details','sources','skills','skill_revisions','skill_dependencies','revision_skill_links','derivations','terms','revision_terms','legacy_term_map','collections','collection_members','legacy_backfill_pending'];
   const fingerprint=tables.map(table=>`SELECT '${table}',md5(string_agg(row_to_json(r)::text,'' ORDER BY row_to_json(r)::text)) FROM ${table} r`).join(';');
   const before=await run([...compose,'exec','-T','postgres','psql','-U','postgres','-d','wiki','-Atc',fingerprint],true);
   const after=await run([...compose,'exec','-T','postgres','psql','-U','postgres','-d','wiki_restore','-Atc',fingerprint],true);

@@ -1,9 +1,62 @@
-# MCP v2
+# Versioned MCP
 
 Transport: Streamable HTTP at `/mcp`, JSON responses, strict input/output schemas. The server
-advertises version `2.0.0`; tool payloads use `{version:2,data}` or `{version:2,error}`. Errors have
+advertises version `3.0.0`; tool payloads use `{version:2|3,data}` or `{version:2|3,error}`. Errors have
 `code`, safe `message` and HTTP-style `status`; failed tools set `isError`. Discover exact schemas
 with `tools/list`. Unknown fields, vault paths and old response layouts are not silently accepted.
+
+Existing tools default to `contract_version: 2`; pass `contract_version: 3` to select native
+semantics. New tools default to v3 and reject v2. Endpoint and OAuth resource audience do not
+change. V2 never invents a legacy type/tag for native knowledge. Legacy broad reads return
+`unsupported_contract` when visible native data would be omitted or misrepresented. Exact
+historical legacy page reads remain available, including through `legacy_revision`. Native
+assignment retrieval explicitly requires v3. `wiki_tags` remains legacy-only: use
+`wiki_terms_list` for native organization.
+
+## Native v3 workflow
+
+Start with `wiki_describe`: it explains kinds, permissions, invariants and useful next tools.
+An empty instance needs no onboarding. An agent can create a title-only record immediately,
+or ask whether the owner wants topics, editorial formats and collections. Never infer authority
+to reorganize the instance from onboarding advice or a stored skill.
+
+| Tool | Native contract |
+| --- | --- |
+| `wiki_apply_change` | Atomic create, partial edit, specialized source/skill replacement, archive |
+| `wiki_get_page` | ID or exact revision; complete fixed document, evidence and instruction metadata |
+| `wiki_list`, `wiki_search` | Kind/topic/format/collection/maturity filters and next_offset |
+| `wiki_search_and_read`, `wiki_context` | Complete bounded records; remaining IDs and next action when full |
+| `wiki_skills_list`, `wiki_skill_get` | Small descriptions first, then exact instructions/requirements/dependencies |
+| `wiki_term_change`, `wiki_terms_list` | Version-checked topic/format registry and alias resolution |
+| `wiki_collection_change`, `wiki_collections_list` | Version-checked ordered private navigation |
+| `wiki_lock_change` | Optimistic lock-version check plus separate local manage_locks capability |
+| `wiki_get_related`, `wiki_get_sources` | Navigation, pinned lineage and provenance with offset continuation |
+
+Native documents require title only. Omitted patch fields preserve values; explicit empty
+lists clear them. Sources and skills require their specialized operations. Source intake takes
+origin metadata and byte-preserved original separately; optional `new_revision` lets the same
+atomic group cite a newly accepted source. Choose IDs before the request. A skill stores its
+instructions in document.body, plus description/use_when/avoid_when/requirements/dependencies;
+dependencies can be fetched with `wiki_get_page` using revision alone. Actual instruction use
+is recorded through a `used_skill` derivation, not a mutable applicability link.
+
+Context byte limits never replace originals with summaries. A record larger than the context
+budget is returned as a remaining ID; fetch it directly. Search-and-read pins ranked revisions.
+For reverse links, advance the supplied offset using incoming_next_offset, lineage.next_offset
+or sources.next_offset independently until null. Public reads use only authorized revisions
+and pinned classification labels. Collections and lock state are private.
+Term/collection lists also return next_offset. Collection discovery omits member bodies with
+members_included=false; supply an exact collection ID to retrieve its ordered member IDs.
+
+Example native create arguments:
+
+```json
+{"contract_version":3,"idempotency_key":"capture-1","operations":[{"op":"create","id":"00000000-0000-4000-8000-000000000001","document":{"title":"First thought"}}]}
+```
+
+The reading names and shared attachment/publication/assignment operations below remain
+available. The **legacy type/tag and full-document write descriptions** below apply to v2,
+not to native v3 records.
 
 Authorize using the pre-registered personal client (Authorization Code + S256 PKCE + refresh) or
 optional factchecker (client credentials). Both request `resource=https://<wiki-host>/mcp`.

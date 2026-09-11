@@ -5,7 +5,7 @@ import type { WorkSettings } from '../factcheck/protocol.ts';
 import type { Destinations } from '../delivery/outbox.ts';
 const { z } = await import('zod');
 const httpsUrl = z.string().url().refine(value => { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password && !url.hash; });
-const grantsSchema = z.array(z.object({ subject:z.string().min(1),client:z.string().min(1),role:z.enum(['personal','owner','factchecker']) }).strict()).min(2);
+const grantsSchema = z.array(z.object({ subject:z.string().min(1),client:z.string().min(1),role:z.enum(['personal','owner','factchecker']),capabilities:z.array(z.literal('manage_locks')).max(1).optional() }).strict()).min(2);
 export interface Config {
   databaseUrl: string; blobDirectory: string; origin: string; port: number; auth: AuthConfig; browser: BrowserConfig;
   publicationEnabled: boolean; work: WorkSettings; destinations: Destinations; reviewIntervalSeconds: number; workerIdentity: Identity;

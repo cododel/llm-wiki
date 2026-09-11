@@ -1,7 +1,7 @@
 import type { SQL } from 'bun';
 import { randomUUID } from 'node:crypto';
 import { requireRole, type Identity } from '../auth/identity.ts';
-import { Reader, type Snapshot } from '../content/reads.ts';
+import { capture,isNativeSnapshot,type WorkSnapshot } from './snapshot.ts';
 import { requireCondition } from '../runtime/errors.ts';
 import { workflow, type Kind, type WorkSettings } from './protocol.ts';
 import { resultJsonSchema } from './result-json-schema.ts';
@@ -14,13 +14,13 @@ export async function emitEvent(tx: Transaction, job: string | null, kind: strin
   await tx`INSERT INTO outbox(id,channel,payload) VALUES(${id},'notification',${payload}::jsonb)`;
 }
 export interface Job {
-  id: string; kind: Kind; state: string; snapshot: Snapshot; executor: string | null;
+  id: string; kind: Kind; state: string; snapshot: WorkSnapshot; executor: string | null;
   claim_token: string | null; lease_until: Date | null; attempts: number; fingerprint: string;
   revision_id: string; target_id: string; progress: unknown; result: unknown; result_hash: string | null;
 }
-export async function dispatch(tx: Transaction, id: string, kind: Kind, snapshot: Snapshot) {
+export async function dispatch(tx: Transaction, id: string, kind: Kind, snapshot: WorkSnapshot) {
   await tx`INSERT INTO outbox(id,channel,payload,available_at)
-    SELECT ${randomUUID()},${kind},${{ version:1,job_id:id,kind,workflow,snapshots:[snapshot],result_schema:resultJsonSchema }}::jsonb,available_at
+    SELECT ${randomUUID()},${kind},${{ version:isNativeSnapshot(snapshot)?2:1,job_id:id,kind,workflow,snapshots:[snapshot],result_schema:resultJsonSchema }}::jsonb,available_at
     FROM jobs WHERE id=${id}`;
 }
 export class Queue {
@@ -33,19 +33,19 @@ export class Queue {
       await tx`SELECT pg_advisory_xact_lock(71822003)`;
       const candidates = await tx<{ id: string; revision: string; fingerprint: string }[]>`
         SELECT r.id,v.id AS revision,v.content_hash AS fingerprint FROM records r JOIN revisions v ON v.id=r.current_revision
-        WHERE NOT r.archived AND r.type NOT IN ('raw-source','meta','adr') AND NOT v.generated
+        JOIN revision_details d ON d.revision_id=v.id
+        WHERE NOT r.archived AND r.kind='record' AND d.check_policy='automatic' AND NOT v.generated
         AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.kind='factcheck' AND j.target_id=r.id AND j.fingerprint=v.content_hash)
         ORDER BY r.id LIMIT 100`;
       const capacity = await tx<{ count: number }[]>`SELECT count(*)::int AS count FROM jobs WHERE kind='factcheck' AND state IN ('pending','running')`;
-      const reader = new Reader(tx, identity, { publicEnabled: false });
       const created: string[] = [];
       for (const candidate of candidates.slice(0, Math.max(0, 100 - capacity[0]!.count))) {
-        created.push(await this.enqueue(tx, 'factcheck', null, await reader.page(candidate.id, candidate.revision)));
+        created.push(await this.enqueue(tx, 'factcheck', null, await capture(tx,identity,candidate.id,candidate.revision)));
       }
       return { queued: created.length };
     });
   }
-  private async enqueue(tx: Transaction, kind: Kind, campaign: string | null, snapshot: Snapshot) {
+  private async enqueue(tx: Transaction, kind: Kind, campaign: string | null, snapshot: WorkSnapshot) {
     const id = randomUUID();
     await tx`INSERT INTO jobs(id,kind,campaign_id,target_id,revision_id,fingerprint,snapshot)
       VALUES(${id},${kind},${campaign},${snapshot.id},${snapshot.revision},${snapshot.content_hash},${snapshot}::jsonb)`;
@@ -65,9 +65,12 @@ export class Queue {
       }
       const campaign = randomUUID();
       await tx`INSERT INTO campaigns(id,actor) VALUES(${campaign},${identity.actor})`;
-      const reader = new Reader(tx, identity, { publicEnabled: false });
       const jobs: string[] = [];
-      for (const id of new Set(ids)) jobs.push(await this.enqueue(tx, 'review', campaign, await reader.page(id)));
+      for (const id of new Set(ids)) {
+        const snapshot=await capture(tx,identity,id);
+        requireCondition(isNativeSnapshot(snapshot)?snapshot.record.kind!=='source':snapshot.type!=='raw-source','invalid_target','Sources are preserved evidence, not review targets');
+        jobs.push(await this.enqueue(tx, 'review', campaign, snapshot));
+      }
       const response = { campaign_id: campaign, jobs };
       await tx`INSERT INTO idempotency VALUES(${identity.actor},${`review:${key}`},${requestHash},${response}::jsonb)`;
       return response;
@@ -84,10 +87,11 @@ export class Queue {
       const active = await tx`SELECT id FROM jobs WHERE kind='review' AND state IN ('pending','running') LIMIT 1`;
       if (active.length) return { started:false };
       const targets = await tx<{ id:string; revision:string }[]>`SELECT r.id,r.current_revision AS revision FROM records r JOIN revisions v ON v.id=r.current_revision
-        WHERE NOT r.archived AND r.type NOT IN ('raw-source','meta','adr') AND NOT v.generated ORDER BY r.id`;
-      const campaign=randomUUID(), reader=new Reader(tx,identity,{publicEnabled:false});
+        JOIN revision_details d ON d.revision_id=v.id
+        WHERE NOT r.archived AND r.kind='record' AND d.check_policy='automatic' AND NOT v.generated ORDER BY r.id`;
+      const campaign=randomUUID();
       await tx`INSERT INTO campaigns(id,actor) VALUES(${campaign},${identity.actor})`;
-      for(const target of targets) await this.enqueue(tx,'review',campaign,await reader.page(target.id,target.revision));
+      for(const target of targets) await this.enqueue(tx,'review',campaign,await capture(tx,identity,target.id,target.revision));
       await tx`INSERT INTO instance_state VALUES('periodic-review',${{at:new Date().toISOString()}}::jsonb)
         ON CONFLICT(key) DO UPDATE SET value=excluded.value`;
       return { started:true,campaign_id:campaign };
@@ -104,7 +108,7 @@ export class Queue {
     const jobs = await this.db<Job[]>`SELECT * FROM jobs WHERE id=${id}`;
     requireCondition(jobs.length, 'not_found', 'Assignment unavailable', 404);
     const job = jobs[0]!;
-    return { version: 1, job_id: id, kind: job.kind, state: job.state, workflow, snapshots: [job.snapshot],
+    return { version: isNativeSnapshot(job.snapshot)?2:1, job_id: id, kind: job.kind, state: job.state, workflow, snapshots: [job.snapshot],
       progress: job.executor === identity.actor || identity.role === 'personal' ? job.progress : null, result_schema: resultJsonSchema };
   }
   async claim(identity: Identity, id: string) {

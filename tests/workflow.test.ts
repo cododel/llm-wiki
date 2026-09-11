@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { connect, migrate } from '../src/storage/database.ts';
-import { seed } from '../src/storage/seed.ts';
+import { seed } from './legacy-seed.ts';
 import { Queue } from '../src/factcheck/queue.ts';
 import { complete, fail, assignmentResult } from '../src/factcheck/results.ts';
 import {Reader} from '../src/content/reads.ts';

@@ -36,3 +36,5 @@ The old Hermes instructions are research input, not normative authority. Conflic
 Implementation acceptance must demonstrate the observable guarantees in each contract, including concurrent changes, authorization denial, interrupted operations, duplicate delivery, and restart recovery. Documentation acceptance proves only coherent records and working references; it is not runtime acceptance.
 
 See [local acceptance evidence](VERIFICATION.md) for the verified scenarios and explicit limits.
+The [extended testing program](EXTENDED_TESTING.md) separates deterministic reliability checks,
+full restoration/endurance probes and operator-owned real-agent acceptance.

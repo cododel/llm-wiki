@@ -23,6 +23,15 @@ test('binary preservation, duplicate intake and format/checksum validation',asyn
   await expect(store.read(anonymous,true,hash)).rejects.toMatchObject({code:'not_found'});
   await expect(store.read(identity,true,'../../etc/passwd')).rejects.toMatchObject({code:'not_found'});
 });
+test('binary size boundary preserves exactly 20 MiB and rejects one extra byte without acceptance',async()=>{
+  const bytes=Buffer.alloc(20*1024*1024,0x20);bytes.write('%PDF-1.7\n');const hash=sha256(bytes);
+  await store.ingest(identity,bytes,'application/pdf',hash);
+  expect(Buffer.from((await store.read(identity,false,hash)).bytes)).toEqual(bytes);
+  const oversized=Buffer.concat([bytes,Buffer.from('x')]),rejectedHash=sha256(oversized);
+  await expect(store.ingest(identity,oversized,'application/pdf',rejectedHash)).rejects.toMatchObject({code:'invalid_size'});
+  expect(await db`SELECT hash FROM blobs WHERE hash=${rejectedHash}`).toHaveLength(0);
+  await expect(access(join(directory,rejectedHash))).rejects.toMatchObject({code:'ENOENT'});
+});
 test('symlink storage payload cannot be followed even for an authorized reader',async()=>{
   const hash=sha256('linked-test');
   await symlink(join(directory,sha256(png)),join(directory,hash));

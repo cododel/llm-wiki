@@ -17,21 +17,44 @@ async function request(host:string,path:string,init:RequestInit={}) {
   return response;
 }
 const auth='auth.wiki.test',wiki='wiki.wiki.test',resource=`https://${wiki}/mcp`;
-if(process.argv[4]==='after') {
+if(process.argv[4]==='auth-down'){
+  const saved=JSON.parse(await readFile(join(root,'accepted.json'),'utf8'));
+  const response=await request(wiki,'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:`Bearer ${saved.machineToken}`},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})});
+  assert([401,503].includes(response.status),'Unavailable introspection must deny previously valid token');
+  assert(!(await response.text()).includes('PRIVATE_NEW_REVISION'));
+  console.log('PASS real provider outage fails closed');process.exit(0);
+}
+if(['after','restored'].includes(process.argv[4]??'')) {
   const saved=JSON.parse(await readFile(join(root,'accepted.json'),'utf8'));
   let response:Response|undefined;
-  for(let i=0;i<40;i++) {
-    response=await request(wiki,'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_get_page',arguments:{id:saved.id,contract_version:3}}})});
-    if(response.status===200) break;
+  for(let i=0;i<120;i++) {
+    try{response=await request(wiki,'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_get_page',arguments:{id:saved.id,contract_version:3}}})});}catch{}
+    if(response?.status===200) break;
     await Bun.sleep(250);
   }
   assert(response?.ok,'Restart readiness');
   const result=await response.json();
   assert.equal(result.result.structuredContent.data.page.revision,saved.revision,'Published revision survives restart');
   assert(!JSON.stringify(result).includes('PRIVATE_NEW_REVISION'),'Private edit stays private after restart');
-  const access=await token('factchecker','factchecker-secret',{grant_type:'client_credentials',scope:'wiki:read wiki:factcheck'});
+  // Discovery/public reads alone do not prove the provider's DB pool recovered.
+  let access;
+  for(let attempt=0;attempt<60;attempt++){
+    try{access=await token('factchecker','factchecker-secret',{grant_type:'client_credentials',scope:'wiki:read wiki:factcheck'});break;}
+    catch(error){if(attempt===59)throw error;await Bun.sleep(500);}
+  }
+  assert(access?.access_token,'Machine grant recovers within 30 seconds');
   const resumed=await mcp('wiki_assignment_get',{job_id:saved.reviewJob,contract_version:3},access.access_token);
   assert.equal(resumed.result.structuredContent.data.progress.stage,'saved-before-restart');
+  if(process.argv[4]==='restored'){
+    const task=resumed.result.structuredContent.data;
+    const completion=await mcp('wiki_assignment_complete',{job_id:saved.reviewJob,claim_token:saved.reviewToken,
+      result:{version:1,records:[{id:task.snapshots[0].id,revision:task.snapshots[0].revision,coverage:'no_claims',reason:'Restored synthetic fixture',claims:[]}],suggestions:[]}},access.access_token);
+    assert(!completion.result.isError,'Restored executor can complete its live lease');
+    const blob=await request(wiki,`/attachments/${saved.blobHash}`);
+    assert.equal(blob.status,200);assert.equal(createHash('sha256').update(Buffer.from(await blob.arrayBuffer())).digest('hex'),saved.blobHash);
+    const found=await mcp('wiki_search',{contract_version:3,query:'PRIVATE_NEW_REVISION'},access.access_token);
+    assert(!found.result.isError);assert(JSON.stringify(found).includes(saved.id),'Restored search finds private current revision for authorized client');
+  }
   console.log('PASS restart preserves accepted publication without exposing private edits');
   process.exit(0);
 }
@@ -48,7 +71,7 @@ async function mcp(name:string,args:Record<string,unknown>,accessToken:string) {
   const response=await request(wiki,'/mcp',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json, text/event-stream',Authorization:`Bearer ${accessToken}`},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})});
   assert.equal(response.status,200,'MCP HTTP response');return response.json();
 }
-assert.equal((await mcp('wiki_list',{},machine.access_token)).result.isError,undefined);
+assert.equal((await mcp('wiki_list',{contract_version:3},machine.access_token)).result.isError,undefined);
 assert.equal((await mcp('wiki_apply_change',{idempotency_key:randomUUID(),operations:[{op:'tag',tag:'forbidden',description:'Must be rejected'}]},machine.access_token)).result.isError,true);
 console.log('PASS real machine introspection and domain authorization');
 await json(auth,'/api/firstfactor',{method:'POST',headers:{'Content-Type':'application/json',Origin:`https://${auth}`},body:JSON.stringify({username:'owner',password:await secret('owner-password'),keepMeLoggedIn:false})});
@@ -78,6 +101,10 @@ assert.notEqual(machineIdentity.sub,personalIdentity.sub);assert.notEqual(machin
 const refreshed=await token('personal-agent','personal-agent-secret',{grant_type:'refresh_token',refresh_token:personal.refresh_token});
 assert.notEqual(refreshed.refresh_token,personal.refresh_token);
 personal.access_token=refreshed.access_token;
+if(process.argv[4]==='restored-cycle'){
+  const saved=JSON.parse(await readFile(join(root,'accepted.json'),'utf8'));
+  assert(!(await mcp('wiki_unpublish',{id:saved.id},personal.access_token)).result.isError,'Restored service permits authorized withdrawal');
+}
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jC1sAAAAASUVORK5CYII=','base64');
 const blobHash=createHash('sha256').update(png).digest('hex');
 assert(!(await mcp('wiki_ingest_attachment',{original_base64:png.toString('base64'),checksum:blobHash,media_type:'image/png'},personal.access_token)).result.isError,'Blob intake');
@@ -111,7 +138,7 @@ const campaign=await mcp('wiki_review_start',{ids:[id],idempotency_key:randomUUI
 assert(!campaign.result.isError);const reviewJob=campaign.result.structuredContent.data.jobs[0];
 const reviewClaim=await mcp('wiki_assignment_claim',{job_id:reviewJob},machine.access_token);
 assert(!(await mcp('wiki_assignment_progress',{job_id:reviewJob,claim_token:reviewClaim.result.structuredContent.data.claim_token,progress:{stage:'saved-before-restart',notes:'Retain this progress'}},machine.access_token)).result.isError);
-await writeFile(join(root,'accepted.json'),JSON.stringify({id,revision,blobHash,reviewJob}));
+await writeFile(join(root,'accepted.json'),JSON.stringify({id,revision,blobHash,reviewJob,reviewToken:reviewClaim.result.structuredContent.data.claim_token,machineToken:machine.access_token}),{mode:0o600});
 console.log('PASS real personal PKCE, browser OIDC, CSRF, escaped content and owner-only approval');
 assert.equal((await request(auth,'/api/oidc/revocation',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',
   Authorization:`Basic ${Buffer.from(`personal-agent:${await secret('personal-agent-secret')}`).toString('base64')}`},body:new URLSearchParams({token:personal.access_token})})).status,200);

@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      extended:
+        description: Run fault, full restore and 60-minute endurance acceptance
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +20,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -26,7 +31,23 @@ jobs:
       - name: Install regex search dependency
         run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Verify service
-        run: bun run tools/verify.ts
+        id: verification
+        env:
+          EXTENDED: ${{ github.event_name == 'workflow_dispatch' && inputs.extended || false }}
+        run: |
+          if [ "$EXTENDED" = true ]; then
+            bun run tools/verify.ts --extended
+          else
+            bun run tools/verify.ts
+          fi
+      - name: Retain verification evidence
+        if: ${{ always() && steps.verification.outputs.report_directory != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.verification.outputs.report_directory }}
+          retention-days: 14
+          if-no-files-found: error
       - name: No source changes or local dependencies
         run: |
           git diff --exit-code
